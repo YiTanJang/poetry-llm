@@ -1,0 +1,28 @@
+# 임시 파일
+*.tmp
+*.bak
+~$*
+
+# 스캔 원본 (대용량 — 별도 스토리지 관리)
+scans/
+raw_data/
+
+# 모델 가중치 (별도 스토리지 관리)
+checkpoints/
+*.bin
+*.pt
+*.safetensors
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
