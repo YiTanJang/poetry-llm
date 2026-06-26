@@ -3,7 +3,7 @@ type: Section Index
 title: 모델 설계
 description: 베이스 모델 선정, 파인튜닝 전략, 아키텍처 고려사항.
 tags: [model, fine-tuning, architecture]
-timestamp: 2026-06-26T00:00:00Z
+timestamp: 2026-06-27T00:00:00Z
 ---
 
 # 모델 설계
