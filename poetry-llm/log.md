@@ -19,3 +19,7 @@ timestamp: 2026-06-26T00:00:00Z
 - `poetry-llm/evaluation/auto_metrics.md` 수정: BLEU/ROUGE 지표의 미학적 한계 분석, Unseen n-gram fraction 및 NoveltyBench Distinct-k 다양성 지표 공식 도입, CrPO 창의성 선호 최적화 목표 및 평가 모델 에코챔버 탐지 프로토콜 추가, Mecab 및 KR-SBERT 문장 임베딩 기반 구체적 구현 및 가중치 최적화 상관관계 분석 계획 상세화.
 - `poetry-llm/evaluation/llm_as_judge.md` 신규 생성: 시 창작 전문 LLM 심사위원(LLM-as-a-Judge) 설계, 다중 에이전트 합의체(Committee) 비평 메커니즘, 6대 미학 기준 점수 루브릭 정의, 자가 선호/위치/길이 편향 제어 및 분포 보정 전략, Weighted Kappa 및 Kendall's Tau 기반 인간 평가 상관관계 합치도 분석 보정 파이프라인 상세 기술.
 - `poetry-llm/preprocessing/korean_g2p_alignment.md` 신규 생성 및 `index.md` 수정: Kiwi 형태소 분석기와 g2pk를 활용한 한국어 시 발음 변환(G2P) 파이프라인 설계 및 자소-음소 정렬(Syllable-to-Syllable, Onset-Nucleus-Coda) 스키마 상세 명세 추가, 트랜스포머 모델 주입 전략(인라인 토큰, 듀얼 스트림, 자소 분리) 제안.
+- `poetry-llm/evaluation/human_evaluation.md` 수정: 인간 평가 설계 및 가이드라인 보완 (전문가/일반 패널 구체적 요건, 5점 척도 상세 루브릭, Fleiss' Kappa/Weighted Kappa/Krippendorff's Alpha 등 평가자 일치도 통계량 설계, 불일치 조정 프로토콜 추가).
+- `poetry-llm/evaluation/index.md` 수정: 인간 평가 가이드라인 제목 수정 및 누락 문서(llm_as_judge.md, evaluation_pipeline.md) 리스트 보완.
+- `poetry-llm/data/quality_and_cleaning.md` 신규 생성 및 `index.md` 수정: 데이터 정제 및 품질 필터링 가이드라인 작성 (메타데이터 표준 스키마, OCR 오류 정밀 보정, 띄어쓰기 및 구두점 보존 규칙, Layout/PPL/MinHash 중복 품질 필터, 공정이용 및 Opt-out 저작권 전략 명세).
+

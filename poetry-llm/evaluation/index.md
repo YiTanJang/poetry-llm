@@ -11,5 +11,7 @@ timestamp: 2026-06-26T00:00:00Z
 | 문서 | 내용 |
 |------|------|
 | [auto_metrics.md](auto_metrics.md) | 자동화 평가 지표 (novelty, 구조 정확도 등) |
-| [human_evaluation.md](human_evaluation.md) | 인간 블라인드 평가 설계 |
+| [human_evaluation.md](human_evaluation.md) | 인간 블라인드 평가 설계 및 가이드라인 |
 | [aesthetic_quality.md](aesthetic_quality.md) | 미학적 품질 기준 정의 |
+| [llm_as_judge.md](llm_as_judge.md) | LLM 심사위원(LLM-as-a-Judge) 설계 |
+| [evaluation_pipeline.md](evaluation_pipeline.md) | 평가 파이프라인 구성 및 실패 분석 |
