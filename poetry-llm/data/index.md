@@ -3,7 +3,7 @@ type: Section Index
 title: 학습 데이터
 description: 시, 시론, 시평론, 보조 예술 데이터의 수집 전략 및 구성.
 tags: [data, corpus, collection]
-timestamp: 2026-06-26T00:00:00Z
+timestamp: 2026-06-27
 ---
 
 # 학습 데이터
@@ -16,6 +16,9 @@ timestamp: 2026-06-26T00:00:00Z
 | [foreign_poetry.md](foreign_poetry.md) | 외국어 시 데이터 (~500권) |
 | [other_arts.md](other_arts.md) | 보조 예술 데이터 (미술, 소설, 극) |
 | [acquisition.md](acquisition.md) | 데이터 수집 방법 및 저작권 전략 |
+| [quality_and_cleaning.md](quality_and_cleaning.md) | 데이터 정제 및 품질 필터링 가이드라인 |
+| [token_budget.md](token_budget.md) | 토큰 예산 및 데이터 규모 계산 |
+| [augmentation.md](augmentation.md) | 시 데이터 증강 전략 |
 
 ## 데이터 구성 목표
 
