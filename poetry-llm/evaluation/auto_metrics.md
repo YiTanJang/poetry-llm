@@ -135,9 +135,42 @@ Sanity Gate는 Floor(바닥)다. 실제 신호는 다음 계층에서 온다.
 
 ---
 
-## 4. 기존 자동 지표의 보조적 활용
+## 4. Novelty의 수학적 공식화 및 모니터링 지표
 
-N-gram 지표와 임베딩 다양성 지표는 필터 조건에서는 제거하지만, **배치 레벨 다양성 모니터링**에는 유용하다.
+기존 자동 지표(N-gram 중복도 및 임베딩 다양성)는 단일 시의 합격/불합격을 결정하는 필터로 사용하지 않지만, 모델의 다양성을 모니터링하고 배치 레벨의 모드 붕괴(mode collapse)를 감지하기 위해 수학적으로 정의하여 사용한다.
+
+### 4.1 N-gram Overlap (N-gram 중복도 및 독창성)
+
+배치 및 단일 시 수준에서의 N-gram 기반 독창성은 다음과 같이 공식화한다.
+
+#### 1) Distinct-N (배치 내 고유 N-gram 비율)
+배치 $B$ 내에서 생성된 모든 시의 N-gram 다양성을 측정하기 위해, 고유 N-gram 수와 전체 N-gram 수의 비율을 계산한다.
+$$\text{Distinct-N}(B) = \frac{|\bigcup_{p \in B} G_n(p)|}{\sum_{p \in B} |G_n(p)|}$$
+여기서 $G_n(p)$는 시 $p$에 존재하는 모든 $n$-gram의 다중집합(multiset)이며, 분자의 $\bigcup$는 중복을 제거한 고유 $n$-gram들의 합집합이다.
+
+#### 2) Unseen N-gram Fraction (참조 코퍼스 대비 독창성)
+생성된 시 $p$가 기존 참조 시집 코퍼스 $C_{\text{ref}}$에 없는 새로운 N-gram을 얼마나 포함하고 있는지 측정한다.
+$$\text{Novelty}_n(p) = 1 - \frac{\sum_{g \in G_n(p)} \mathbb{I}(g \in C_{\text{ref}})}{|G_n(p)|}$$
+여기서 $\mathbb{I}(\cdot)$는 지시 함수(indicator function)로, 해당 $n$-gram이 참조 코퍼스에 존재하면 1, 존재하지 않으면 0을 반환한다.
+
+### 4.2 Embedding Distance (임베딩 다양성 및 거리)
+
+텍스트의 표층적 중복을 넘어 의미적 다양성을 측정하기 위해 문장/시 수준의 임베딩 모델 $E(\cdot)$ (예: KR-SBERT)을 활용한다.
+
+#### 1) Pairwise Cosine Distance
+두 시 $p_i, p_j$ 사이의 의미적 거리는 다음과 같이 코사인 거리로 정의한다.
+$$d(p_i, p_j) = 1 - \text{CosineSimilarity}(E(p_i), E(p_j)) = 1 - \frac{E(p_i) \cdot E(p_j)}{\|E(p_i)\|_2 \|E(p_j)\|_2}$$
+
+#### 2) Batch Diversity (배치 내 다양성)
+크기 $B$를 가진 생성 배치 내의 평균 및 최소 거리를 모니터링하여 다양성을 추적한다.
+$$\text{Mean Pairwise Distance}(B) = \frac{2}{B(B-1)} \sum_{1 \le i < j \le B} d(p_i, p_j)$$
+$$\text{Min Pairwise Distance}(B) = \min_{1 \le i < j \le B} d(p_i, p_j)$$
+이 값이 특정 임계값 이하로 떨어지면 생성 모델의 다양성 부족 및 반복 생성을 의미하므로, 디코딩 하이퍼파라미터(Temperature, Top-p) 재검토 신호로 사용한다.
+
+#### 3) Embedding-based Novelty
+참조 코퍼스 $C_{\text{ref}}$의 시들과의 거리를 기반으로, 생성된 시 $p$의 의미적 참신성을 평가한다.
+$$\text{Novelty}_{\text{emb}}(p) = \min_{r \in C_{\text{ref}}} d(p, r)$$
+또는 최인접 $k$개 참조 시와의 평균 거리로 확장하여 평가할 수 있다.
 
 ```python
 # 필터로 쓰지 않음. 모니터링 용도로만.
@@ -155,11 +188,45 @@ def batch_diversity_monitor(poems: list[str]) -> dict:
     }
 ```
 
-Distinct-k(배치 내 고유 k-gram 비율)도 동일하게 모니터링 전용.
+Distinct-k(배치 내 고유 k-gram 비율)도 동일하게 모니터링 전용으로 활용한다.
 
 ---
 
-## 5. 구현 구조
+## 5. 일반 사물 Novelty (Common-Object Novelty) 및 예외 처리
+
+단순히 사전에 등장하지 않는 '희귀 단어(rare words)'나 '어색한 합성어'를 나열하는 것을 넘어, **누구나 아는 일상적인 사물(예: 꽃, 시계, 돌, 눈)을 지극히 낯선 문맥과 통사 구조로 결합하여 미학적 가치를 창출하는 경우**를 '일반 사물 Novelty'로 정의하고, 기존 평가 지표가 이를 결함으로 오인하지 않도록 예외 처리 규칙을 수립한다.
+
+### 5.1 문제 상황: 기존 지표의 한계
+1. **단어 빈도(IDF) 패널티**: '꽃', '시계' 등 흔히 사용되는 단어가 포함되면, 단순 어휘 기반 Novelty 계산 시 평이한 시로 과소평가된다.
+2. **정적 단어 임베딩의 한계**: static word embedding 기반의 유사도 비교는 '시계'와 '자라다'의 비정상적 결합을 감지하지 못하고, 개별 단어의 일상성만 반영한다.
+
+### 5.2 예외 처리 및 측정 모델
+흔한 어휘들이 결합하여 발생하는 구조적/의미적 novelty를 평가하기 위해 다음과 같은 구성적(compositional) 평가 방식을 설계한다.
+
+#### 1) 통사-의미론적 괴리도 (Syntactic-Semantic Divergence)
+개별 단어의 빈도는 높지만, 이들이 문장 구조 내에서 관계를 맺는 결합 확률이 극히 낮음을 수치화한다.
+의존 구문 분석(Dependency Parsing) 결과로 도출된 두 단어의 쌍 $(w_d, w_h)$ (의존어와 지배어, 예: '시계가' - '자란다')에 대해:
+- 일반 코퍼스 $C_{\text{general}}$에서의 개별 단어 빈도: $P(w_d)$, $P(w_h)$ (매우 높음)
+- 일반 코퍼스에서의 결합(의존 관계) 빈도: $P(w_d \to w_h)$ (매우 낮음)
+- **통사적 결합 Novelty Score**:
+  $$\text{Novelty}_{\text{syntax}}(w_d, w_h) = -\log \frac{P(w_d \to w_h)}{P(w_d)P(w_h)}$$
+  이 점수가 임계값 $\theta_{\text{syntax}}$을 초과하는 결합 관계가 시 내에 존재할 경우, 개별 어휘가 흔하더라도 **최종 Novelty 가중치를 상향 조정**하는 예외 처리를 수행한다.
+
+#### 2) 문맥화 임베딩 변이도 (Contextualized Embedding Shift)
+트랜스포머 기반 언어모델(KoBERT, KoGPT 등)의 레이어에서 추출한 문맥화된 단어 임베딩 $E_{\text{context}}(w | S)$과 사전학습 코퍼스 전체에서 평균화된 정적 표상 $E_{\text{static}}(w)$ 사이의 편차를 계산한다.
+$$\text{Shift}(w | S) = 1 - \text{CosineSimilarity}(E_{\text{context}}(w | S), E_{\text{static}}(w))$$
+- 일상적 맥락("시계를 본다"): 문맥 임베딩이 정적 표상과 유사함 ($\text{Shift} \approx 0$)
+- 낯설게 하기 맥락("시계를 심는다"): 주변 맥락에 의해 단어의 표상이 꼬여 변이도가 급증함 ($\text{Shift} \gg 0$)
+- 시에 등장하는 일반 사물 어휘들의 평균 $\text{Shift}$가 높을수록, 평이한 단어를 극도로 독창적인 이미지로 결합하여 사용했음을 의미한다.
+
+#### 3) 생성 확률 역전 (Likelihood Inversion under Reference LM)
+일반 언어모델(예: KoGPT2)과 파인튜닝된 시 생성 모델 사이의 당혹도(Perplexity) 차이를 측정한다.
+- 일반적인 문장: 두 모델 모두 높은 확률(낮은 PPL)을 부여.
+- 일반 사물 Novelty 문장: 일반 LM은 매우 낮은 확률(높은 PPL)을 주지만, 미학적으로 잘 훈련된 생성 모델/리워드 모델은 합리적인 확률을 부여.
+
+---
+
+## 6. 구현 구조
 
 ```
 poetry-llm/evaluation/metrics/
@@ -183,8 +250,6 @@ poetry-llm/evaluation/metrics/
 
 ## 미결 사항
 
-- [ ] 리워드 모델 학습에 필요한 pairwise 선호도 데이터 최소 수량 결정 — 500쌍 vs 2000쌍.
-- [ ] 리워드 모델의 기반 모델 선정 — KR-ELECTRA, KoSimCSE 등 한국어 판별 모델 비교 필요.
-- [ ] 외부 LLM 심사 프롬프트 최적화 — 6개 기준 중 어떤 순서로 제시하면 앵커링 편향이 줄어드는가.
-- [ ] 배치 다양성 모니터링 임계값 설정 — mean pairwise distance < 얼마일 때 모드 붕괴 경고를 발령하는가.
-- [ ] 에코챔버 탐지 프로토콜 구체화 — 생성 모델과 심사 모델의 사전학습 코퍼스 겹침을 어떻게 측정할 것인가.
+- [ ] 통사-의미론적 괴리도(Syntactic-Semantic Divergence)를 계산할 때, 의존 구문 분석기(예: Kiwipiepy)의 한국어 시 분석 오차율을 보정할 수 있는 통계적 신뢰 범위 설정법.
+- [ ] 문맥화 임베딩 변이도(Contextualized Embedding Shift) 측정 시, 시적 낯설게 하기의 양상을 가장 정밀하게 표상하는 트랜스포머 레이어층(중간층 vs 최상위층) 선정 실험 설계.
+- [ ] 일반 사물 Novelty가 높은 생성 결과를 리워드 모델이 '단순 오작동(비문)'이 아닌 '미학적 낯설게 하기'로 인식하도록 훈련 데이터셋을 라벨링하는 기준 정의.
