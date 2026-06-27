@@ -128,41 +128,48 @@ Stage 5 — 수정/반복 (수정 과정 데이터): 10M tokens
   - **저장/선택 기준 (Aesthetic Reward Score)**: 단순히 텍스트 예측의 validation loss에만 의존하지 않고, **미학적 리워드 모델(Aesthetic Reward Model)**의 평가 점수와 창작 노트(CoT)-최종 시 간의 미학적 일관성 점수를 모니터링한다. Validation loss가 낮아지더라도 미학적 novelty나 시의 음악성이 감소하는 체크포인트는 배제하고, 리워드 모델 기준의 미학적 완성도 점수가 정점을 찍는 최적의 밸런스 체크포인트를 선별하여 보존한다.
 
 
-### SFT 커리큘럼 학습 (Stage 1~4)
+### SFT 커리큘럼 학습 (Stage 1~5)
 
-SFT 단계는 단순한 형태의 시 완성에서 출발하여 고차원적 비평 및 수정 능력을 갖추기까지 4단계의 커리큘럼으로 나누어 학습을 순차적으로 전개한다.
+SFT 단계는 포맷 과적합(Formatting Overfitting)을 방지하고 미학적 언어 표현력을 온전히 학습하기 위해, 특수 토큰을 완전히 배제한 상태에서 점진적으로 형식 제어를 이식하는 5단계의 커리큘럼으로 나누어 학습을 순차적으로 전개한다.
 
-#### SFT Stage 1: 기본 형식 및 구조 학습 (Format 1 & Format 6)
-- **목적**: 특수 토큰(`<행갈이>`, `<연갈이>`, `<시작>`, `<끝>`)의 올바른 경계 배치 규칙 및 운율/발음 태그의 연계를 기본 체화한다.
+#### SFT Stage 1: 순수 시 언어 감각 학습 (특수 토큰 배제)
+- **목적**: 특수 토큰과 제어 포맷에 가중치 손실(Loss)이 집중되어 시적 텍스트의 참신성이 저하되는 현상을 제어한다. 어떠한 특수 토큰(`<행갈이>`, `<연갈이>` 등)도 도입하지 않고, 표준 개행(`\n`)만으로 구성된 순수 한국어 시 원본 데이터를 학습하여 시적 통사 왜곡과 표현력을 먼저 내재화한다.
+- **데이터 구성**: 특수 포맷팅 및 메타데이터가 제외된 순수 정제 시 원문 데이터 100%.
+- **하이퍼파라미터**: Learning Rate $1.2 \times 10^{-5}$, Effective Batch Size 32, Epoch 2.
+- **Loss Masking**: 입력과 출력 구분 없이 전체 시 텍스트 본문에 대해 Loss를 100% 계산한다.
+- **전환/종료 조건**: Held-out Perplexity < 4.5 및 문학적 어휘 다양성(TTR) 수렴 확인 시 다음 Stage로 진입.
+
+#### SFT Stage 2: 기본 형식 및 구조 학습 (Format 1 & Format 6 - 특수 토큰 도입)
+- **목적**: 이전 Stage에서 내재화된 시적 스타일 위에 특수 토큰(`<행갈이>`, `<연갈이>`, `<시작>`, `<끝>`)의 올바른 경계 배치 규칙 및 구조적 운율 매핑을 기본 체화한다.
 - **데이터 구성**: `training_data_formats.md`의 [포맷 1 (완성시)](../preprocessing/training_data_formats.md#포맷-1---완성시-기본) 40% + [포맷 6 (빈칸 채우기)](../preprocessing/training_data_formats.md#포맷-6---빈칸-채우기-구조-학습) 60%.
-- **하이퍼파라미터**: Learning Rate $1 \times 10^{-5}$, Effective Batch Size 32, Epoch 2.
+- **하이퍼파라미터**: Learning Rate $8 \times 10^{-6}$, Effective Batch Size 32, Epoch 2.
 - **Loss Masking**: 입력과 출력 구분 없이 전체 시 텍스트 및 빈칸 정답 영역에 대해 Loss를 100% 계산한다.
 - **전환/종료 조건**: Validation Set에서의 특수 토큰 예측 F1-Score > 0.95 및 Held-out Perplexity < 5.0 만족 시 다음 Stage로 진입.
 
-#### SFT Stage 2: 메타 지식 및 시론 정렬 (Format 2 & Format 5)
+#### SFT Stage 3: 메타 지식 및 시론 정렬 (Format 2 & Format 5)
 - **목적**: 문학적 비평, 수사 기법 등의 추상적 메타 서사와 시 본문 사이의 미학적 정렬(Alignment)을 구축한다.
 - **데이터 구성**: [포맷 2 (시 + 시론 페어)](../preprocessing/training_data_formats.md#포맷-2---시--시론-페어) 60% + [포맷 5 (시 $\rightarrow$ 설명 역방향)](../preprocessing/training_data_formats.md#포맷-5---시--설명-역방향) 40%.
-- **하이퍼파라미터**: Learning Rate $8 \times 10^{-6}$, Effective Batch Size 32, Epoch 3.
+- **하이퍼파라미터**: Learning Rate $6 \times 10^{-6}$, Effective Batch Size 32, Epoch 3.
 - **Loss Masking**:
   - 포맷 2: 시(Poem) 입력부에 대한 Loss 계산을 제외하고, 시론(Analysis) 설명부에만 Loss를 집중 계산한다.
   - 포맷 5: 완성시 입력 영역은 `-100`으로 마스킹 처리하고, 역방향 해설(Commentary) 영역만 Loss를 계산한다.
 - **전환/종료 조건**: Validation Set의 평론 Perplexity 수렴 및 정성 샘플링 평가(5점 척도 기준 분석 타당성 평균 3.5점 이상) 달성 시 진입.
 
-#### SFT Stage 3: CoT 창작 프로세스 이식 (Format 3 & Format 7)
+#### SFT Stage 4: CoT 창작 프로세스 이식 (Format 3 & Format 7)
 - **목적**: 창작 아이디어 구상(창작 노트)을 기반으로 일관성 있는 시를 창작하는 Chain-of-Thought 경로를 모델 내부에 이식한다.
 - **데이터 구성**: [포맷 3 (창작 노트 $\rightarrow$ 시)](../preprocessing/training_data_formats.md#포맷-3---창작-노트--시-cot-파이프라인의-핵심) 70% + [포맷 7 (소재 $\rightarrow$ 시)](../preprocessing/training_data_formats.md#포맷-7---소재--시-창작-요청) 30%.
-- **하이퍼파라미터**: Learning Rate $5 \times 10^{-6}$ (세밀한 가중치 조정), Effective Batch Size 16, Epoch 3.
+- **하이퍼파라미터**: Learning Rate $4 \times 10^{-6}$ (세밀한 가중치 조정), Effective Batch Size 16, Epoch 3.
 - **Loss Masking**:
   - 입력 프롬프트(주제/소재)는 완전히 마스킹한다.
   - 창작 노트(CoT) 영역과 최종 시(Poem) 영역 모두 학습 신호로 사용하되, 의도 설계에 집중하기 위해 창작 노트의 Loss 가중치는 0.5, 최종 시 본문의 Loss 가중치는 1.0으로 스케일링하여 적용한다.
 - **전환/종료 조건**: 창작 노트에 제시된 핵심 미학 지침(예: 이미지 종류, 행갈이 특징)과 생성된 시 본문 간의 일치도 검증 스코어 > 90% 달성 시 진입.
 
-#### SFT Stage 4: 자기 비평 및 반복 수정 (Format 4)
+#### SFT Stage 5: 자기 비평 및 반복 수정 (Format 4)
 - **목적**: 초고의 단점(정서적 직설, 상투적 비유)을 피드백(Critique)에 기반하여 정교한 언어로 재고하는 교정 루프를 완성한다.
 - **데이터 구성**: [포맷 4 (수정 과정 데이터)](../preprocessing/training_data_formats.md#포맷-4---수정-과정-데이터) 100%.
-- **하이퍼파라미터**: Learning Rate $3 \times 10^{-6}$ (극도로 미세한 잔차 업데이트), Effective Batch Size 16, Epoch 3.
+- **하이퍼파라미터**: Learning Rate $2 \times 10^{-6}$ (극도로 미세한 잔차 업데이트), Effective Batch Size 16, Epoch 3.
 - **Loss Masking**: 초안(Draft) 및 비평(Critique) 영역은 손실 계산에서 배제하고, 최종 수정본(Revised Poem) 영역에만 Loss를 100% 적용한다.
-- **전환/종료 조건**: 외부 심사 LLM 평가를 통해 비평 의견의 개선 요구사항 수용률 > 85% 이상 검증 시 SFT 최종 완료 및 DPO 단계 이행.
+- **전환/종료 조건**: 외부 심사 LLM 평가를 통해 비평 의견의 개선 요구사항 수용률 > 85% 이상 검증 시 SFT 최종 완료 및 DPO/GRPO 단계 이행.
 
 ### 조기 종료 (Early Stopping)
 
