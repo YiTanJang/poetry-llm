@@ -3,7 +3,7 @@ type: Design
 title: 반복 수정 루프
 description: 시 초안을 자기 비평 → 수정 → 재평가 사이클로 반복 개선하고 무한 루프를 방지하는 파이프라인.
 tags: [generation, iterative, self-critique, refinement, loop-mitigation]
-timestamp: 2026-06-27T00:00:00Z
+timestamp: 2026-06-28T00:00:00Z
 ---
 
 # 반복 수정 루프
@@ -140,24 +140,27 @@ graph TD
 *   **최저 점수 하한선**: 개별 5개 지표(직유 절제도, 감정 감각화, 시적 긴장감, 도입/결미 참신성, 이미지 독창성) 중 단 하나라도 $3.0$ 미만인 항목이 없어야 한다.
 *   **통과 판정 변수**: 비평가의 평가 결과 객체 내 `pass_evaluation` 필드가 `true`여야 한다.
 
-### 2. 하드 반복 제한 (Hard Iteration Limits)
+### 2. 하드 반복 제한 (Hard Iteration Limits - Max Limit)
 *   **최대 라운드 제한**: $N=5$ (최대 5회 생성/수정 라운드 수행).
-*   5회째 수정안에 도달할 때까지 점수 임계치 조건을 만족하지 못하면 시스템은 즉시 루프를 종료하고 **강제 종료(Force Terminate)** 상태로 진입한다.
+*   5회째 수정안에 도달할 때까지 점수 임계치 조건을 만족하지 못하면 시스템은 즉시 루프를 종료하고 **강제 종료(Force Terminate)** 상태로 진입하여 Fallback Selector를 작동시킨다.
 
-### 3. 시맨틱 코사인 유사도 기반 정체 감지 (Semantic Stagnation Detection)
-*   수정 전후의 텍스트가 의미론적으로 진전이 없는 상태(예: 단순히 품사만 교체하거나 유사 동의어로 대체하는 맴돌기 현상)를 감지한다.
-*   **감지 공식**: 한국어 문장 임베딩 모델(예: `KoSimCSE`, `KoBERT-Sentence`)을 통해 산출한 이전 라운드 시 $P_{t-1}$과 현재 라운드 시 $P_t$의 코사인 유사도를 활용한다.
-    $$Sim(P_{t-1}, P_t) = \frac{\vec{V}_{t-1} \cdot \vec{V}_t}{\|\vec{V}_{t-1}\| \|\vec{V}_t\|}$$
-*   **임계값**: $Sim(P_{t-1}, P_t) > \theta_{stagnant}$ (기본 임계치: **0.96**).
+### 3. 시맨틱 코사인 유사도 및 어휘 중첩 기반 정체 감지 (Semantic & Lexical Stagnation Detection)
+*   수정 전후의 텍스트가 의미론적/어휘적으로 진전이 없는 상태(예: 단순히 문장 부호를 변경하거나 유사 동의어로 대체하여 제자리맴돌기하는 현상)를 감지한다.
+*   **정체 감지 기준**:
+    1.  **의미적 정체 (Semantic Stagnation)**: 한국어 문장 임베딩 모델(SBERT, 예: `snunlp/KR-SBERT-V1`)로 산출한 이전 라운드 시 $P_{t-1}$과 현재 라운드 시 $P_t$의 코사인 유사도가 임계값 $\theta_{\text{stagnant\_sem}} = 0.96$을 초과하는 경우.
+        $$Sim_{\text{semantic}}(P_{t-1}, P_t) = \frac{\vec{V}_{t-1} \cdot \vec{V}_t}{\|\vec{V}_{t-1}\| \|\vec{V}_t\|} > 0.96$$
+    2.  **어휘적 정체 (Lexical Stagnation)**: 형태소 분석기(Mecab)로 토큰화한 두 시의 명사/동사/형용사 합집합 대비 교집합 비율(Jaccard Similarity)이 임계값 $\theta_{\text{stagnant\_lex}} > 0.92$를 초과하는 경우.
+        $$Sim_{\text{lexical}}(P_{t-1}, P_t) = \frac{|Tokens(P_{t-1}) \cap Tokens(P_t)|}{|Tokens(P_{t-1}) \cup Tokens(P_t)|} > 0.92$$
 *   **조치 메커니즘**:
     1.  **1차 정체 감지**: 다음 라운드 수정 프롬프트에 `[정체 경고] 이전 수정안과 구조적/의미적 차이가 없습니다. 이번 라운드에서는 시상을 전면 재구성(Global Reset)하거나 새로운 시각을 도입하십시오.` 경고를 강제 삽입하고 수정을 유도한다.
     2.  **2차 정체 감지 (2회 연속)**: 즉시 수정을 중단하고 루프를 탈출하여 Fallback Selector로 이관한다.
 
-### 4. 진동 감지 (Oscillation Detection)
-*   시인 모델이 비평가의 상충되는 피드백 사이에서 방황하며 이전의 상태(예: $P_{t-2}$ 또는 $P_{t-3}$)로 되돌아가거나(Oscillation) 두 버전 사이를 단순 반복하는 현상을 감지한다.
-*   **감지 공식**: 현재 라운드 시 $P_t$의 임베딩 $\vec{V}_t$와 과거 역사적 모든 라운드의 임베딩 $\{\vec{V}_0, \dots, \vec{V}_{t-2}\}$ 간의 유사도를 측정한다.
-    $$\exists k \ge 2 \text{ s.t. } Sim(P_t, P_{t-k}) > \theta_{oscillate} \quad (\text{기본 임계치: } \mathbf{0.98})$$
-*   **조치 메커니즘**: 진동이 감지되면 추가 수정이 무의미한 상태로 간주하고 즉시 루프를 중단하며 Fallback Selector로 이관한다.
+### 4. 반복 및 진동 감지 (Repetition & Oscillation Detection)
+*   **단순 반복 감지 (Repetition Detection)**: 현재 라운드 시 $P_t$가 직전 라운드 $P_{t-1}$과 자소 수준에서 거의 일치하는 상태(의미적 유사도 $Sim_{\text{semantic}} > 0.99$ 및 어휘적 유사도 $Sim_{\text{lexical}} > 0.98$)가 지속되는 현상으로, 감지 시 추가 수정 없이 즉시 루프를 중단한다.
+*   **진동 감지 (Oscillation Detection)**: 시인 모델이 비평가의 상충되는 피드백 사이에서 방황하며 이전 상태(예: $P_{t-2}$ 또는 $P_{t-3}$)로 되돌아가거나 두세 버전 사이를 반복하는 현상을 감지한다.
+*   **진동 감지 공식**: 현재 라운드 시 $P_t$의 임베딩 $\vec{V}_t$와 과거 역사적 모든 라운드의 임베딩 $\{\vec{V}_0, \dots, \vec{V}_{t-2}\}$ 간의 유사도와 어휘 중첩도를 비교한다.
+    $$\exists k \ge 2 \text{ s.t. } Sim_{\text{semantic}}(P_t, P_{t-k}) > \theta_{\text{oscillate\_sem}} \quad (\text{임계치: } 0.98) \quad \text{AND} \quad Sim_{\text{lexical}}(P_t, P_{t-k}) > \theta_{\text{oscillate\_lex}} \quad (\text{임계치: } 0.95)$$
+*   **조치 메커니즘**: 진동이 감지되면 추가 수정이 무의미한 교착 상태로 간주하고 즉시 루프를 중단하며 Fallback Selector로 이관한다.
 
 ### 5. 수정 온도 및 강도 감쇠 (Temperature & Intensity Decay)
 *   라운드가 진행됨에 따라 다양성을 보장하는 온도 값을 점진적으로 낮춤으로써 시상이 분산되지 않고 수렴되도록 통제한다.
