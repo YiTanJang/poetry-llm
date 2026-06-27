@@ -55,8 +55,15 @@ timestamp: 2026-06-27T00:00:00Z
   LLM이 주관성·무작위성·창의성을 요구하는 요청에 얼마나 다양한 답을 낼 수 있는지 평가.
   Distinct-k 메트릭 활용. COLM 2024·ICLR 2025의 90% 이상 평가 논문이 단일/최선 생성만 평가한다는 문제를 지적.
   → **이 프로젝트 관련성**: 반복 수정 파이프라인의 다양성 평가에 직접 활용 가능.
-- **CreativeBench** (arXiv 2603.11863, 2026):
-  LLM 창의성을 구조화해서 벤치마킹하고 향상시키기 위한 최신 프레임워크.
+- **CreativeBench** (arXiv 2603.11863, ACL 2026 Findings):
+  LLM의 창의성을 조합형 창의성(Combinatorial Creativity: 익숙한 개념의 낯선 조합)과 탐색형 창의성(Exploratory Creativity: 구조화된 개념 공간 탐색 및 발견)으로 분류하여 벤치마킹하는 프레임워크.
+  * **핵심 방법론**: 역공학(Reverse Engineering) 및 셀프 플레이(Self-play)를 활용한 자동 파이프라인을 구축하고, **품질(Quality)과 독창성(Novelty)의 곱(Product)**을 통합 메트릭으로 사용.
+  * **주요 발견**: 스케일링은 조합형 창의성을 높이지만 탐색형 창의성에는 한계가 있으며, 대형 모델일수록 '스케일링에 의한 수렴(convergence-by-scaling)'으로 인해 정답성은 높지만 발산도가 감소함. 추론(Reasoning) 능력은 제약 조건 하의 탐색에 더 유리함.
+  * **창의성 향상 기법**: EvoRePE(Evolutionary Reverse Prompt Engineering) 기법을 통해 추론 시점에 진화적 탐색 패턴을 내재화하여 창의성을 제어.
+  → **이 프로젝트 관련성**:
+    1) 한국어 현대시 창의성을 '조합형(소재·은어의 낯선 결합)'과 '탐색형(새로운 연 구조 및 메타포 탐색)'으로 분리 평가하는 기준 설계에 기여.
+    2) 모델 크기(Qwen2.5-32B)가 커짐에 따라 발생할 수 있는 '초인적 평범함'과 '수렴' 현상을 탐색형 창의성 한계 관점에서 분석하고, 진화적 역프롬프트(EvoRePE)나 추론(CoT) 단계 강화를 통해 이를 보완하도록 파이프라인 설계.
+    3) 평가 메트릭에서 품질과 독창성의 곱 형태의 다중 목표 평가 체계 차용.
 - **Creative Preference Optimization (CrPO)** (arXiv 2505.14442, EMNLP 2025):
   LLM 창의성(novelty, diversity, surprise, quality) 향상을 위한 선호 최적화 방법론.
   DPO 변형으로 창의성을 직접 최적화.
@@ -76,11 +83,13 @@ timestamp: 2026-06-27T00:00:00Z
 - **Creative Chain-of-Thought** 관련 연구들:
   창작 노트 방식이 출력 품질을 향상시킨다는 초기 근거 있음
 - **COIG-Writer** (arXiv 2510.14763, ICLR 2026 제출):
-  중국어 창의적 글쓰기 데이터셋. **고품질 텍스트의 사고 과정을 역공학(reverse-engineering)으로 재구성.**
-  51개 장르에 걸쳐 1,665개 triplet (프롬프트 + 창의적 추론 + 최종 텍스트).
-  핵심 발견: **창의적 글쓰기 = 서사 논리(process supervision 제공) + 언어 표현(범용 데이터 유지)의 이중 구조.**
-  비영어권에서 LLM의 체계적 창의성 결핍은 과정 수준 감독(process-level supervision) 부재에서 기인.
-  → **이 프로젝트 관련성**: 창작 노트 생성이 단순한 CoT가 아니라 "과정 감독 데이터"로서 독립적 가치가 있음을 지지하는 강력한 근거. 한국어 시에도 동일 방식 적용 가능.
+  중국어 창의적 글쓰기 능력을 강화하기 위한 프롬프트-사고과정-최종본 데이터셋. **고품질 텍스트로부터 사고 과정을 역공학(Reverse-Engineering)하여 1,665개 triplet(프롬프트 + 창의적 추론 + 최종 글) 구성.**
+  * **핵심 발견**: 창의적 글쓰기는 서사 논리(Narrative Logic)와 언어 표현(Linguistic Expression)의 이중 구조로 나뉨. 전자는 과정 수준의 지도학습(Process-level Supervision)으로 학습되고, 후자는 일반 웹 데이터 등의 표현력으로 유지됨.
+  * 비영어권 LLM의 창의성 결핍(클리셰 반복 등)은 언어적 표현력 부족이 아니라 창의적 발상 및 전개라는 '과정 감독 데이터'의 부재에서 비롯됨을 실증.
+  * **데이터 혼합 전략**: 안정적인 학습을 위해 창의적 데이터와 일반 데이터의 적절한 혼합 비율(최소 1:12)이 성능 저하(general degradation) 방지에 필수적임을 규명.
+  → **이 프로젝트 관련성**:
+    1) 한국어 시 생성 파이프라인의 **'창작 노트(CoT) → 시 초안 → 반복 수정'** 흐름에서, 창작 노트가 단순한 설명이 아닌 '시상 전개 및 시적 논리(Narrative/Poetic Logic)'를 교정하는 과정 감독 데이터(Process Supervision)로서 동작하도록 정교하게 설계해야 함.
+    2) 한국어 현대시 풀 파인튜닝(CPT/SFT) 시, 시집 데이터만을 단독으로 학습시킬 경우 발생할 수 있는 치명적인 언어 능력 붕괴나 과적합을 막기 위해, COIG-Writer의 권장사항인 **창의적 데이터 대 일반 한국어 코퍼스의 혼합 비율(1:12 이상)**을 데이터 혼합 전략에 반영해야 함.
 - **LLM Discussion Framework** (arXiv 2405.06373, 2024):
   LLM 토론·역할극을 통한 창의성 향상. 여러 관점이 창의적 결과물의 다양성을 높임.
 - **Multi-Novelty** (arXiv 2502.12700, 2025):
@@ -238,3 +247,9 @@ timestamp: 2026-06-27T00:00:00Z
 22. BILLY (2025). *BILLY: Steering Large Language Models via Merging Persona Vectors for Creative Generation*. arXiv:2510.10157.
 23. Popescu-Belis, A. et al. (2022). *GPT-2 Poetry Fine-tuning*. (참조).
 24. Ghazvininejad, M. et al. (2016). *Hafez: An Interactive Poetry Generation System*.
+
+## 미결 사항
+
+- COIG-Writer의 데이터 혼합 전략(1:12 비율)이 한국어 현대시 풀 파인튜닝 시 성능 저하(general degradation) 방지와 시적 독창성 유지의 관점에서도 최적의 비율인지 어떻게 실증할 것인가?
+- CreativeBench의 탐색형 창의성(Exploratory Creativity) 측정 개념을 도입할 때, 실행(execution) 검증이 불가능한 한국어 현대시 영역에서 참신한 시상(Novelty)과 무작위 환각(Hallucination)의 경계를 구분하는 정량적 평가 메트릭을 어떻게 정립할 것인가?
+- CreativeBench에서 제안된 진화적 역프롬프트(EvoRePE)와 같은 추론 시점의 다양성 제어 및 지향적 탐색 기법을 우리의 '창작 노트(CoT) → 시 초안 → 반복 수정' 3단계 생성 파이프라인에 어떻게 이식할 것인가?
