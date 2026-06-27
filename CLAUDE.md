@@ -24,17 +24,23 @@ poetry-llm/
 
 ## 에이전트 브랜치 규칙
 
-각 에이전트는 **자신의 담당 브랜치**에서만 작업한다:
+각 작업 세션은 **task 브랜치**에서 진행하고 완료 즉시 master로 머지한다.
 
-| 브랜치 | 담당 디렉토리 |
-|--------|-------------|
-| `agent/data` | `poetry-llm/data/` |
-| `agent/model` | `poetry-llm/model/`, `poetry-llm/preprocessing/` |
-| `agent/generation` | `poetry-llm/generation/` |
-| `agent/evaluation` | `poetry-llm/evaluation/` |
-| `agent/research` | `poetry-llm/research/` |
+```bash
+# 작업 시작
+git checkout master && git pull
+git checkout -b task/YYYYMMDD-간략설명
 
-작업 시작 전: `git checkout <내 브랜치>`
+# 작업 완료 후
+git checkout master
+git merge task/YYYYMMDD-간략설명
+git branch -d task/YYYYMMDD-간략설명
+```
+
+- 브랜치 수명은 하나의 작업 세션 동안만. 완료 후 즉시 삭제.
+- 서브에이전트 여러 개가 같은 task 브랜치를 쓸 경우, **각자 다른 파일**을 담당해야 한다.
+- 장기 브랜치(`claude`, `antigravity` 등) 금지 — master 누적 충돌 방지.
+
 작업 완료 후: `poetry-llm/log.md`에 변경 이력 추가
 
 ## 작업 지침

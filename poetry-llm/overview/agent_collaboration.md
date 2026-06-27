@@ -1,7 +1,7 @@
 ---
 type: Playbook
 title: Claude Code × Antigravity 협업 방식
-description: 두 에이전트가 동일한 위키를 각자 브랜치에서 자유롭게 발전시키고 머지하는 워크플로우.
+description: 두 에이전트가 task 브랜치 단위로 작업하고 즉시 master로 머지하는 워크플로우.
 tags: [collaboration, claude-code, antigravity, git, workflow]
 timestamp: 2026-06-27T00:00:00Z
 ---
@@ -10,38 +10,45 @@ timestamp: 2026-06-27T00:00:00Z
 
 ## 기본 구조
 
-각 에이전트는 **전용 브랜치**에서 위키 전체를 자유롭게 읽고 수정한다.
-영역 제한 없음. 문제를 찾으면 고치고, 아이디어가 생기면 추가한다.
-머지할 때 충돌을 정리한다.
+장기 에이전트 브랜치 없음. 모든 작업은 **task 브랜치**에서 진행하고 완료 즉시 master로 머지한다.
 
 ```
-master          ← 안정 버전. 머지 결과만.
-├── claude      ← Claude Code 전용 작업 브랜치
-└── antigravity ← Antigravity 전용 작업 브랜치
+master          ← 항상 최신. 모든 작업의 기점이자 종점.
+└── task/날짜-설명  ← 하나의 작업 세션 동안만 존재. 완료 후 삭제.
 ```
 
-## 각 에이전트의 작업 방식
+## 왜 task 브랜치인가
 
-### Claude Code
+장기 `claude` / `antigravity` 브랜치는 두 가지 문제를 만든다:
+
+1. **누적 충돌**: 브랜치가 오래 살수록 master에서 멀어져 머지 시 충돌이 쌓인다.
+2. **서브에이전트 간 충돌**: 한 브랜치 내에서 서브에이전트 여러 개가 같은 파일을 건드리면 충돌.
+
+task 브랜치는 수명이 한 세션으로 짧아서 두 문제 모두 해소된다.
+
+## 작업 흐름
+
+### 세션 시작
+
 ```bash
-git checkout claude
-# 위키 전체 읽고, 문제 찾고, 아이디어 추가, 자유롭게 수정
-git add -A && git commit -m "..."
+git checkout master && git pull
+git checkout -b task/YYYYMMDD-간략설명
 ```
 
-### Antigravity
+### 작업 중
+
+- 서브에이전트를 병렬로 돌릴 경우, 각자 **겹치지 않는 파일**을 담당
+- 각 커밋은 담당 파일만 `git add poetry-llm/섹션/파일.md` 로 스테이징
+
+### 세션 종료
+
 ```bash
-git checkout antigravity
-# 위키 전체 읽고, 문제 찾고, 아이디어 추가, 자유롭게 수정
-git add -A && git commit -m "..."
+git checkout master
+git merge task/YYYYMMDD-간략설명
+git branch -d task/YYYYMMDD-간략설명
 ```
 
-## 머지
-
-두 브랜치가 충분히 쌓이면 머지를 요청한다.
-충돌은 에이전트에게 정리를 맡긴다:
-
-> "claude 브랜치랑 antigravity 브랜치 master로 머지해줘. 충돌은 두 의견을 합치는 방향으로."
+충돌 발생 시: 양쪽 내용을 합치는 방향으로 수동 해결. 한쪽을 버리지 않는다.
 
 ## 인스트럭션 파일
 
@@ -49,3 +56,10 @@ git add -A && git commit -m "..."
 |--------|------|------|
 | Claude Code | `CLAUDE.md` | 프로젝트 컨텍스트 자동 로드 |
 | Antigravity | `AGENTS.md` | 프로젝트 컨텍스트 자동 로드 |
+| Antigravity | `ANTIGRAVITY_PROMPT.md` | 작업 시작 시 복사해서 붙여넣는 만능 프롬프트 |
+
+## 미결 사항
+
+- AGENTS.md가 없을 경우 Antigravity가 CLAUDE.md를 읽는지 확인 필요
+- task 브랜치 네이밍 컨벤션을 더 구체화할 것인가 (섹션 접두사 등)
+- 두 에이전트가 동시에 작업할 경우 파일 분배를 누가 조율하는가
