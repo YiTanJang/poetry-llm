@@ -218,6 +218,6 @@ if __name__ == "__main__":
 
 ## 미결 사항
 
-- [ ] `tokenizer.bos_token = "<시작>"` 및 `tokenizer.eos_token = "<끝>"`으로 등록할 때, vLLM이나 HuggingFace pipeline 등 외부 추론 엔진과의 호환성에 부작용이 없는가?
-- [ ] 추가된 특수 토큰들의 학습 초기 경사 발산(Gradient Explosion)을 막기 위해, 이 토큰 임베딩 레이어에만 별도의 낮은 학습률(Learning Rate)을 적용하거나 Warm-up 단계를 차등 적용해야 하는가?
-- [ ] `<행갈이>`와 `<연갈이>`의 임베딩을 단순히 복사/평균하여 사용하는 것보다, 이들의 조합이 문맥에서 올바르게 수렴되도록 하기 위해 continual pretraining 코퍼스에 이 토큰들을 임의 비율로 혼합하여 사전 적응 훈련을 거쳐야 하는가?
+- [TODO] `tokenizer.bos_token = "<시작>"` 및 `tokenizer.eos_token = "<끝>"`으로 등록할 때, vLLM이나 HuggingFace pipeline 등 외부 추론 엔진과의 호환성에 부작용이 없는가?
+- [Ph1] 추가된 특수 토큰들의 학습 초기 경사 발산(Gradient Explosion)을 막기 위해, 이 토큰 임베딩 레이어에만 별도의 낮은 학습률(Learning Rate)을 적용하거나 Warm-up 단계를 차등 적용해야 하는가?
+- [Ph1] `<행갈이>`와 `<연갈이>`의 임베딩을 단순히 복사/평균하여 사용하는 것보다, 이들의 조합이 문맥에서 올바르게 수렴되도록 하기 위해 continual pretraining 코퍼스에 이 토큰들을 임의 비율로 혼합하여 사전 적응 훈련을 거쳐야 하는가?
