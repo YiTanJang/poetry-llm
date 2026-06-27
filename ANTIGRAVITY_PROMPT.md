@@ -116,20 +116,56 @@ index.md has NO frontmatter. Do not add frontmatter to index.md files.
 
 ---
 
+## Scope rules — Phase 0 is design only
+
+**The single most important rule:** Ask yourself before every sentence you write —
+> "Am I documenting a design decision, or am I making one?"
+
+This wiki is in **Phase 0 — 기반 설계**. That means:
+
+**In scope:**
+- Documenting decisions that have already been made (record them clearly)
+- Writing design docs that are referenced but not yet written
+- Adding examples or diagrams that clarify existing decisions
+- Surfacing open questions in `## 미결 사항`
+
+**Out of scope — do NOT do these:**
+- Writing Python implementation code (classes, functions, full scripts)
+- Inventing design decisions not already stated in the existing docs
+- Adding numerical thresholds or hyperparameters without evidence ("use lr=5e-7" unless it's already decided)
+- "Solving" a problem you found in `## 미결 사항` — instead, enrich the question with context and leave it open
+- Adding Phase 2/3 features to Phase 0 design docs
+- Introducing new components (new agent roles, new evaluation systems) not already in the design
+
+**When you find a problem or gap:**
+- Do NOT solve it unsolicited
+- Add it to `## 미결 사항` in the relevant file with a clear description
+- If it conflicts with an existing design decision, note the conflict in `## 미결 사항`
+
+**The "design vs implement" test:**
+- Design = "what we will build and why" → OK
+- Pseudocode showing the concept = OK
+- Full working code = NOT OK in Phase 0
+
+---
+
 ## What counts as valuable work
 
 **Good:**
 - Fixing wrong or outdated information
 - Writing a design doc that is referenced but not yet written
-- Adding concrete code, formulas, or examples to a vague section
-- Filling in a `## 미결 사항` item from another file
+- Adding pseudocode or examples that clarify a concept (not full implementations)
+- Filling in a `## 미결 사항` item with more context or sub-questions
 - Expanding a stub file into a full design doc
 
 **Bad (do not do):**
+- Adding full Python implementations or complete class definitions
+- Introducing design decisions not found in existing docs (especially for multi-agent roles, evaluation systems, or training pipeline components)
 - Cosmetic rewording with no new information
 - Adding obvious caveats or disclaimers
 - Writing content that duplicates another file
 - Touching files outside your assigned task
+- Changing persona names, role definitions, or pipeline steps that have already been decided
 
 ---
 
