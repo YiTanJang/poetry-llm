@@ -6,6 +6,17 @@ timestamp: 2026-06-26T00:00:00Z
 
 # 변경 이력
 
+## 2026-06-28 (파이프라인 블로커 17-point 분석 — open_questions 및 미결 사항 추가)
+- `poetry-llm/research/open_questions.md`: Q29~Q35 신규 추가. 상태 요약 미답 20 → 27. Phase 0/1/2/3 단계 매핑 테이블 갱신.
+  - Q29 (CoT 포맷 통일 Showstopper), Q30 (리워드 모델 콜드스타트 역설), Q31 (GRPO 파이프라인 미구축 Showstopper)
+  - Q32 (평가 루브릭 3파일 비정합 Showstopper), Q33 (역추론 CoT 인과 역전)
+  - Q34 (GRPO 페르소나 모드 붕괴), Q35 (심사위원-생성기 공진화 드리프트)
+- `poetry-llm/model/finetuning_strategy.md`: G=8 vs 3 페르소나 산술 갭 해소 방안 [TODO], GRPO 모드 붕괴 방지 다양성 보너스 [Ph2] 미결 사항 추가.
+- `poetry-llm/generation/cot_training_data_design.md`: 역추론 CoT 인과 역전 비율 관리 [Ph1], 보상 모델 필터 순환 의존 탈출 전략 [Ph1] 미결 사항 추가.
+- `poetry-llm/evaluation/llm_as_judge.md`: 심사위원-생성기 공진화 드리프트 재보정 프로토콜 [Ph2], 필연성 루브릭 자동 측정 불가 proxy 탐색 [Ph1] 미결 사항 추가.
+- `poetry-llm/data/token_budget.md`: 실제 가용 데이터 상한 재산정 [TODO], 합성 데이터 상한 모순 해소 [TODO], 발음 토큰 오버헤드 반영 여부 확인 [TODO] 미결 사항 추가.
+- `poetry-llm/data/acquisition.md`: 저작권 조항 내부 불일치(제35조의5 vs 제35조의3) 해소 [TODO] 미결 사항 추가.
+
 ## 2026-06-28 (SOTA 정렬 조율 및 토크나이저 검증 프로토콜 반영)
 - `poetry-llm/data/augmentation.md`: 역번역(Back-translation)을 시 본문 증강에서 전면 배제하고, 구문 분석(Dependency Parser)의 시적 문법 파괴에 따른 스타일 보존적 섭동의 취약점을 명시하며 퇴고 이력 합성(Trace Augmentation)을 최우선순위로 설정.
 - `poetry-llm/model/finetuning_strategy.md`: SFT 커리큘럼을 5단계로 개편. SFT Stage 1에 특수 토큰과 제어 포맷을 완전히 배제한 '순수 시 언어 감각 학습' 단계를 신설하여 포맷 과적합 방지.
