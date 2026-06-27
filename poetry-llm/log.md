@@ -38,6 +38,10 @@ timestamp: 2026-06-26T00:00:00Z
 - `poetry-llm/research/open_questions.md`: Mapped open questions Q1-Q25 to validation phases and milestones.
 - `poetry-llm/research/prior_art_failures.md`: Refined failure-mitigation matrix to address cliché generation and structural rhythmic breakages.
 
+## 2026-06-28 (선호 정렬 전략 GRPO 전환, Best-of-N + PRM 추가)
+- `poetry-llm/model/finetuning_strategy.md`: 파이프라인을 `DPO` → `GRPO (권장) / DPO (대안)`으로 개편. GRPO 알고리즘(G=8 그룹 샘플링, Reference model 불필요, 그룹 상대 보상) 및 데이터 포맷 신설. DPO를 오프라인 대안으로 재위치. 미결 사항에 GRPO vs DPO 비교 실험, G 최적값, β 탐색 항목 추가 [Ph2].
+- `poetry-llm/generation/output_goals.md`: "Best-of-N 샘플링 + PRM" 섹션 신설. 추론 시점 품질 선택 파이프라인, step-level PRM 보상 설계 방향, GRPO와의 역할 분담 명시. 미결 사항에 N 최적값, PRM 레이블 수집 방법론, Best-of-N vs GRPO 비용 비교 항목 추가 [Ph2].
+
 ## 2026-06-28 (DAPT 스케일링 법칙 보완, G2P CoT 격리 원칙 명시, 음향 모델 감시 조건 추가)
 - `poetry-llm/model/continual_pretraining.md`: "스타일 도메인 vs 지식 도메인 DAPT" 섹션 추가. 의료/코드 DAPT(10B~500B 토큰)와 스타일 적응(수백M으로도 효과 가능)의 차이 명시. CPT 건너뛰기(SFT 직행) 옵션 및 Phase 1 비교 실험 필요성 기술. 미결 사항에 [Ph1] 항목 추가.
 - `poetry-llm/model/model_selection.md`: 미결 사항에 음향 내재화 모델 등장 시 재검토 조건 추가 [TODO]. Qwen2-Audio(7B)/LLaMA-3-Omni(8B) 스케일 부적합, Gemini/GPT-4o 클로즈드 현황 기술. CoT scratchpad 방식이 현실적 대안임을 명시.
