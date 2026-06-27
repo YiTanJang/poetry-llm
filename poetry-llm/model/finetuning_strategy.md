@@ -90,19 +90,61 @@ Stage 5 — 수정/반복 (수정 과정 데이터): 10M tokens
 
 ### 목적
 
-창작 노트(CoT) → 시 초안 → 반복 수정 포맷을 학습한다. 특수 토큰이 완전히 통합되어야 한다.
+창작 노트(CoT) → 시 초안 → 반복 수정 포맷을 학습한다. 특수 토큰이 완전히 통합되어야 한다. CPT 단계에서 확보한 한국 현대시의 언어 감각을 바탕으로, 구조화된 창작 지시와 미학적 피드백을 수용하는 정교한 생성 능력을 배양한다.
 
 ### 핵심 하이퍼파라미터 (Qwen2.5-32B 풀 파인튜닝, A100 80GB × 2장 기준)
 
 | 파라미터 | 초기값 | 비고 |
 |----------|--------|------|
-| Learning rate | 1e-5 | 풀 파인튜닝 기준 |
-| LR schedule | Cosine with warmup | 코사인 감쇠 스케줄러 |
-| Warmup ratio | 0.03 | 총 학습 스텝의 3% |
+| Learning rate | 1e-5 ~ 3e-6 | 커리큘럼 단계(Stage 1~4)별로 점진적 감쇠 및 재시작 |
+| LR schedule | Cosine with warmup | 각 Stage 진입 시 Warm restart 적용 |
+| Warmup ratio | 0.05 | 총 학습 스텝의 5% (Sharp transition 대응) |
 | Batch size (Effective) | 16 ~ 64 | Per-device: 1~2 / Gradient Accum: 8~16 |
-| Token budget | 50M ~ 200M tokens | epoch 대신 총 토큰 수 기준 |
-| Max seq length | 4096 | CoT + 시 초안 + 반복 수정 텍스트 포함 |
-| Early stopping | patience = 3 | eval loss 기준 |
+| Token budget | 50M ~ 200M tokens | 전체 4개 Stage 총합 토큰 기준 |
+| Max seq length | 4096 | CoT + 시 초안 + 비평 및 반복 수정 텍스트 전체 포함 |
+| Early stopping | patience = 3 | 각 Stage별 eval loss 기준 조기 종료 |
+
+### LR 스케줄러 및 옵티마이저 리셋(Optimizer Resets) 전략
+
+- **Warm Restart 학습률 스케줄러**: 각 커리큘럼 Stage 전환 시 학습률을 이전 단계의 최종 값에서 이어받지 않고, 새로운 Stage의 피크 학습률로 재시작(Warm Restart)한다. 이때 5%의 Warmup Ratio를 두어 급격한 손실 함수 변화에 따른 모델 가중치 왜곡을 방지한다. 최소 학습률은 $1 \times 10^{-6}$으로 고정하여 학습의 조기 정체를 막는다.
+- **옵티마이저 상태 리셋**: Curriculum Stage가 바뀔 때마다 AdamW 옵티마이저의 모멘텀 및 배리언스 상태 값을 **완전히 초기화(Reset)**한다.
+  - *도입 근거*: Stage 간 데이터의 분포와 학습 목표(형식 학습 $\rightarrow$ 평론 매핑 $\rightarrow$ CoT 추론 $\rightarrow$ 자기 비평 수정)가 서로 상이하다. 이전 Stage에서 누적된 모멘텀 정보가 유지되면 새로운 Stage 학습 초기에 잘못된 업데이트 방향으로 관성이 작용해 파라미터가 왜곡되거나 학습 수렴이 극도로 지연된다. 따라서 Stage 전환 시 모델 가중치만 유지한 채 옵티마이저 객체를 새로 인스턴스화한다.
+
+### SFT 커리큘럼 학습 (Stage 1~4)
+
+SFT 단계는 단순한 형태의 시 완성에서 출발하여 고차원적 비평 및 수정 능력을 갖추기까지 4단계의 커리큘럼으로 나누어 학습을 순차적으로 전개한다.
+
+#### SFT Stage 1: 기본 형식 및 구조 학습 (Format 1 & Format 6)
+- **목적**: 특수 토큰(`<행갈이>`, `<연갈이>`, `<시작>`, `<끝>`)의 올바른 경계 배치 규칙 및 운율/발음 태그의 연계를 기본 체화한다.
+- **데이터 구성**: `training_data_formats.md`의 [포맷 1 (완성시)](../preprocessing/training_data_formats.md#포맷-1---완성시-기본) 40% + [포맷 6 (빈칸 채우기)](../preprocessing/training_data_formats.md#포맷-6---빈칸-채우기-구조-학습) 60%.
+- **하이퍼파라미터**: Learning Rate $1 \times 10^{-5}$, Effective Batch Size 32, Epoch 2.
+- **Loss Masking**: 입력과 출력 구분 없이 전체 시 텍스트 및 빈칸 정답 영역에 대해 Loss를 100% 계산한다.
+- **전환/종료 조건**: Validation Set에서의 특수 토큰 예측 F1-Score > 0.95 및 Held-out Perplexity < 5.0 만족 시 다음 Stage로 진입.
+
+#### SFT Stage 2: 메타 지식 및 시론 정렬 (Format 2 & Format 5)
+- **목적**: 문학적 비평, 수사 기법 등의 추상적 메타 서사와 시 본문 사이의 미학적 정렬(Alignment)을 구축한다.
+- **데이터 구성**: [포맷 2 (시 + 시론 페어)](../preprocessing/training_data_formats.md#포맷-2---시--시론-페어) 60% + [포맷 5 (시 $\rightarrow$ 설명 역방향)](../preprocessing/training_data_formats.md#포맷-5---시--설명-역방향) 40%.
+- **하이퍼파라미터**: Learning Rate $8 \times 10^{-6}$, Effective Batch Size 32, Epoch 3.
+- **Loss Masking**:
+  - 포맷 2: 시(Poem) 입력부에 대한 Loss 계산을 제외하고, 시론(Analysis) 설명부에만 Loss를 집중 계산한다.
+  - 포맷 5: 완성시 입력 영역은 `-100`으로 마스킹 처리하고, 역방향 해설(Commentary) 영역만 Loss를 계산한다.
+- **전환/종료 조건**: Validation Set의 평론 Perplexity 수렴 및 정성 샘플링 평가(5점 척도 기준 분석 타당성 평균 3.5점 이상) 달성 시 진입.
+
+#### SFT Stage 3: CoT 창작 프로세스 이식 (Format 3 & Format 7)
+- **목적**: 창작 아이디어 구상(창작 노트)을 기반으로 일관성 있는 시를 창작하는 Chain-of-Thought 경로를 모델 내부에 이식한다.
+- **데이터 구성**: [포맷 3 (창작 노트 $\rightarrow$ 시)](../preprocessing/training_data_formats.md#포맷-3---창작-노트--시-cot-파이프라인의-핵심) 70% + [포맷 7 (소재 $\rightarrow$ 시)](../preprocessing/training_data_formats.md#포맷-7---소재--시-창작-요청) 30%.
+- **하이퍼파라미터**: Learning Rate $5 \times 10^{-6}$ (세밀한 가중치 조정), Effective Batch Size 16, Epoch 3.
+- **Loss Masking**:
+  - 입력 프롬프트(주제/소재)는 완전히 마스킹한다.
+  - 창작 노트(CoT) 영역과 최종 시(Poem) 영역 모두 학습 신호로 사용하되, 의도 설계에 집중하기 위해 창작 노트의 Loss 가중치는 0.5, 최종 시 본문의 Loss 가중치는 1.0으로 스케일링하여 적용한다.
+- **전환/종료 조건**: 창작 노트에 제시된 핵심 미학 지침(예: 이미지 종류, 행갈이 특징)과 생성된 시 본문 간의 일치도 검증 스코어 > 90% 달성 시 진입.
+
+#### SFT Stage 4: 자기 비평 및 반복 수정 (Format 4)
+- **목적**: 초고의 단점(정서적 직설, 상투적 비유)을 피드백(Critique)에 기반하여 정교한 언어로 재고하는 교정 루프를 완성한다.
+- **데이터 구성**: [포맷 4 (수정 과정 데이터)](../preprocessing/training_data_formats.md#포맷-4---수정-과정-데이터) 100%.
+- **하이퍼파라미터**: Learning Rate $3 \times 10^{-6}$ (극도로 미세한 잔차 업데이트), Effective Batch Size 16, Epoch 3.
+- **Loss Masking**: 초안(Draft) 및 비평(Critique) 영역은 손실 계산에서 배제하고, 최종 수정본(Revised Poem) 영역에만 Loss를 100% 적용한다.
+- **전환/종료 조건**: 외부 심사 LLM 평가를 통해 비평 의견의 개선 요구사항 수용률 > 85% 이상 검증 시 SFT 최종 완료 및 DPO 단계 이행.
 
 ### 조기 종료 (Early Stopping)
 
@@ -116,15 +158,15 @@ trainer = Trainer(
     eval_dataset=eval_dataset,
     callbacks=[EarlyStoppingCallback(early_stopping_patience=3)]
 )
-# eval_loss 기준, 3회 평가 주기 연속 개선 없으면 학습 중단
+# 각 SFT 커리큘럼 Stage별로 eval_loss 기준 3회 평가 주기 연속 개선 없으면 자동 학습 중단 후 다음 Stage로 이행
 ```
 
 ### 평가 체크포인트
 
-매 N 스텝마다:
-1. 행갈이/연갈이 위치 정확도
-2. 소수의 시 프롬프트로 생성 샘플 수동 평가
-3. Perplexity on held-out poetry set
+매 N 스텝마다 다음 지표를 모니터링한다:
+1. 행갈이/연갈이 위치 정확도 (F1 Score)
+2. 소수의 시 프롬프트로 생성 샘플 수동/자동 미학 평가
+3. 각 Stage별 Held-out poetry evaluation set의 Perplexity
 
 ---
 
@@ -257,14 +299,6 @@ if __name__ == "__main__":
 
 ## 미결 사항
 
-1. **Stage 전환 시점의 옵티마이저 상태 제어**: Stage가 전환될 때 Adam optimizer의 모멘텀 및 배리언스 상태를 완전히 초기화(Warm Restart)할 것인가, 아니면 스케줄러의 연속성을 유지할 것인가?
-
-2. **CoT 영역의 Loss Masking**: 창작 노트(CoT) 영역의 loss 가중치를 마스킹하거나 낮추면 시 본문 품질이 향상되는가? SFT에서 CoT를 학습 신호로 쓸 때와 마스킹할 때의 ablation 실험 필요.
-
-3. **다국어 시 데이터의 어휘사전 확장**: 외국어 시 학습 시 토큰 파편화(token fragmentation)를 최소화하면서 시적 뉘앙스를 보존하는 vocabulary 최적화 방법.
-
-4. **DPO β 값 탐색**: β가 너무 낮으면 리워드 해킹, 너무 높으면 SFT 결과물과 무차별. 시 도메인에서 적절한 β 범위는 파일럿에서 실측 필요.
-
-5. **3 페르소나 간 점수 margin이 작을 때 처리 방침**: score_chosen - score_rejected < 0.2인 weak pair를 DPO 데이터에 포함할지 여부.
-
-6. **PRM 탐색 시점**: M3 이후 Phase 1에서 step-level 보상 모델 실험을 시작할 때 인간 레이블링 비용과 효과 비교 연구.
+- **DPO β 값 및 SFT 체크포인트 선정 최적화**: DPO 학습을 개시할 SFT 체크포인트를 어느 커리큘럼 단계(Stage 3 또는 Stage 4)의 어느 에포크 시점으로 고정하는 것이 DPO 선호 정렬 학습의 수렴 속도 및 최종 생성 품질(Novelty) 측면에서 가장 유리한가?
+- **CoT Loss Masking 비율에 따른 시상 일치율-창작자유도 트레이드오프**: SFT Stage 3에서 CoT(창작 노트) 영역의 Loss 가중치(0.0 vs 0.5 vs 1.0)를 다르게 할 때, 학습된 모델의 시상 일치율(창작 노트의 의도를 따르는 정도)과 시 창작의 독창성(Novelty) 및 자유도 간의 정량적 트레이드오프는 어떻게 나타나는가?
+- **다국어 시 데이터의 어휘사전 확장과 토큰 파편화 방지**: 외국어 시 번역 및 학습 시, 한국어와 외국어 토큰 파편화(fragmentation)를 최소화하면서 시적 운율과 뉘앙스를 보존할 수 있는 최적의 Vocabulary 크기 및 추가 토큰 확장 기법은 무엇인가?
