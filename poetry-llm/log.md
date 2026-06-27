@@ -6,6 +6,13 @@ timestamp: 2026-06-26T00:00:00Z
 
 # 변경 이력
 
+## 2026-06-28 (SOTA 정렬 조율 및 토크나이저 검증 프로토콜 반영)
+- `poetry-llm/data/augmentation.md`: 역번역(Back-translation)을 시 본문 증강에서 전면 배제하고, 구문 분석(Dependency Parser)의 시적 문법 파괴에 따른 스타일 보존적 섭동의 취약점을 명시하며 퇴고 이력 합성(Trace Augmentation)을 최우선순위로 설정.
+- `poetry-llm/model/finetuning_strategy.md`: SFT 커리큘럼을 5단계로 개편. SFT Stage 1에 특수 토큰과 제어 포맷을 완전히 배제한 '순수 시 언어 감각 학습' 단계를 신설하여 포맷 과적합 방지.
+- `poetry-llm/evaluation/llm_as_judge.md`: 절대 채점 방식을 배제하고 예선(Qwen2.5-7B-Inst / Swiss-system)과 본선(Claude 3.5 Sonnet / Pairwise 3쌍 비교)으로 나뉜 하이브리드 토너먼트 아키텍처 및 마니페스토 프롬프팅 도입. 워드 샐러드 차단 규칙 명시.
+- `poetry-llm/model/model_selection.md` & `poetry-llm/model/continual_pretraining.md`: DAPT/CPT의 시작점으로 '사전 학습 Base 모델'을 채택하도록 명시하여 Instruct 모델의 정렬 가중치 붕괴 방지 및 Replay Buffer 최소화 전략 확정.
+- `poetry-llm/preprocessing/line_break_tokens.md`: 한글 특수 토큰의 안정성과 공백 병합(Prefix Space Merging) 및 BPE 바이트 분절 오작동을 검증하는 파이썬 테스트용 '토크나이저 특수 토큰 병합 검증 프로토콜' 신설.
+
 ## 2026-06-28 (Antigravity Agent - 30 Wiki Improvements)
 - `poetry-llm/overview/goals.md`: Added ## 미결 사항 (other arts, prose, copyright opt-out).
 - `poetry-llm/overview/roadmap.md`: Updated roadmap open questions (persona, multilingual crossover).
