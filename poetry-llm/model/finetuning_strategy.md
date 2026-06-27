@@ -1,16 +1,33 @@
 ---
 type: Design
 title: 파인튜닝 전략
-description: 풀 파인튜닝 vs LoRA 결정 근거, CPT/SFT 단계별 하이퍼파라미터, 커리큘럼 설계, 특수 토큰 초기화, 조기 종료 기준.
-tags: [model, fine-tuning, full-finetuning, lora, training, cpt, sft]
+description: 전체 학습 파이프라인 — CPT(도메인 적응) → SFT(창작 노트+시 포맷) → DPO(3 페르소나 심사 기반 선호 정렬). 풀 파인튜닝 vs LoRA 결정 근거, 하이퍼파라미터 전략 포함.
+tags: [model, fine-tuning, full-finetuning, lora, training, dpo, cpt, sft]
 timestamp: 2026-06-27T00:00:00Z
 ---
 
 # 파인튜닝 전략
 
+## 전체 학습 파이프라인
+
+```
+CPT (Continued Pre-Training)
+  └── 도메인 언어 적응 — 시 코퍼스, 시론, 평론
+        ↓
+SFT (Supervised Fine-Tuning)
+  └── 창작 노트(CoT) → 시 포맷 학습, 특수 토큰 통합
+        ↓
+DPO (Direct Preference Optimization)
+  └── 3 페르소나 초안 → 외부 심사 → (winner, loser) 선호 정렬
+```
+
+각 단계는 순차적이다. CPT 없이 SFT를 하면 도메인 언어 적응이 부족하고, SFT 없이 DPO를 하면 기본 포맷 자체가 불안정하다.
+
+---
+
 ## 풀 파인튜닝 vs LoRA
 
-사용자는 **풀 파인튜닝**을 계획하고 있다. 이에 대한 근거와 트레이드오프:
+사용자는 **풀 파인튜닝**을 계획하고 있다.
 
 ### 풀 파인튜닝의 장점
 - 모든 파라미터가 업데이트 → 깊은 도메인 적응 가능
@@ -36,184 +53,152 @@ timestamp: 2026-06-27T00:00:00Z
 
 ---
 
-## 학습 파이프라인: CPT → 커리큘럼 SFT
+## 1단계: CPT (Continued Pre-Training) — 도메인 적응
 
-전체 파인튜닝은 두 단계로 구성된다. 상세 내용은 `continual_pretraining.md` 참조.
+### 목적
+
+베이스 모델(Qwen2.5-32B)이 한국 현대시 언어에 적응하도록 도메인 특화 사전학습을 진행한다.
+CPT는 SFT의 선행 조건이다. 도메인 언어 없이 포맷을 학습하면 생성물의 어휘·리듬이 일반 언어 모델 수준에 머문다.
+
+### CPT 커리큘럼 및 토큰 버젯 (총 120M 토큰)
 
 ```
-[베이스 모델: Qwen2.5-32B]
-        ↓
-[1단계: CPT — 시/문학 원시 텍스트 (100M~500M 토큰)]
-        ↓
-[CPT 체크포인트]
-        ↓
-[2단계: 커리큘럼 SFT — Stage 1~4 순차 학습]
-        ↓
-[최종 파인튜닝 모델]
+Stage 1 — 언어 기반 (공공도메인 시, 외국어 시): 50M tokens
+  └── 시의 기본 언어 패턴 및 풍부한 표현력 습득
+
+Stage 2 — 형식 학습 (행갈이/연갈이 토큰 데이터): 30M tokens
+  └── 구조적 결정 및 행/연 단위 제어 패턴 학습
+
+Stage 3 — 메타 지식 (시론, 시평론): 20M tokens
+  └── 시의 논리와 미학적 의도 습득
+
+Stage 4 — CoT 창작 (창작노트 → 시 데이터): 10M tokens
+  └── 창작 과정의 추론(Chain-of-Thought)과 창작 의도 반영 학습
+
+Stage 5 — 수정/반복 (수정 과정 데이터): 10M tokens
+  └── 시적 자기 비평과 다듬기(Refinement) 모델 구축
 ```
+
+### CPT 커리큘럼 이행 세부 설계
+
+- **Stage 간 LR 제어**: 각 Stage 진입 시 Warm Restart를 수행하거나 학습률 스케줄러를 점진적으로 감쇠시킨다 (catastrophic forgetting 방지).
+- **평가 데이터 분리**: 각 Stage 데이터의 5~10%를 Held-out Evaluation Set으로 사전 분리하여 과적합 모니터링.
 
 ---
 
-## 1단계: CPT 하이퍼파라미터
+## 2단계: SFT (Supervised Fine-Tuning) — 포맷 학습
 
-### 환경 기준
-- 모델: Qwen2.5-32B
-- GPU: A100 80GB × 2장, FSDP Full Shard
-- bf16 + gradient checkpointing
+### 목적
 
-### 배치 크기 (seq_len=4096 기준)
+창작 노트(CoT) → 시 초안 → 반복 수정 포맷을 학습한다. 특수 토큰이 완전히 통합되어야 한다.
 
-| 항목 | 값 | 비고 |
-|------|-----|------|
-| Per-device batch size | 2~4 | A100 80GB VRAM 한계 |
-| Gradient accumulation steps | 128~256 | effective batch size 확보 |
-| Effective batch size | ~2M~4M 토큰/스텝 | 대규모 코퍼스 CPT 표준 |
+### 핵심 하이퍼파라미터 (Qwen2.5-32B 풀 파인튜닝, A100 80GB × 2장 기준)
 
-> **주의**: per-device batch size 16~32는 seq_len=4096에서 A100 80GB 기준 OOM 발생.
-> FSDP Full Shard 환경에서도 per-device 2~4가 안전한 상한선.
-
-### 핵심 하이퍼파라미터
-
-| 파라미터 | 권장값 | 근거 |
+| 파라미터 | 초기값 | 비고 |
 |----------|--------|------|
-| Learning rate | 5e-6 ~ 1e-5 | 베이스 모델 보존 + 도메인 적응 균형 |
-| LR schedule | Cosine with warmup | 안정적 감쇠 |
-| Warmup ratio | 0.01~0.03 | 절대 스텝 대신 비율 — 데이터 규모 변화에 강건 |
-| Max seq length | 4096 | 시 + 시론 함께 포함 가능 |
-| Weight decay | 0.1 | 정규화 |
-| Gradient clipping | 1.0 | loss spike 방지 |
+| Learning rate | 1e-5 | 풀 파인튜닝 기준 |
+| LR schedule | Cosine with warmup | 코사인 감쇠 스케줄러 |
+| Warmup ratio | 0.03 | 총 학습 스텝의 3% |
+| Batch size (Effective) | 16 ~ 64 | Per-device: 1~2 / Gradient Accum: 8~16 |
+| Token budget | 50M ~ 200M tokens | epoch 대신 총 토큰 수 기준 |
+| Max seq length | 4096 | CoT + 시 초안 + 반복 수정 텍스트 포함 |
+| Early stopping | patience = 3 | eval loss 기준 |
 
-### 토큰 예산 (CPT)
-
-| 시나리오 | 코퍼스 규모 | 목표 학습 토큰 | 예상 학습 시간 (A100×2) |
-|----------|------------|--------------|------------------------|
-| 소규모 | 50M 토큰 | 50M~100M (1~2 epoch) | ~12~24시간 |
-| 중규모 | 200M 토큰 | 200M~400M (1~2 epoch) | ~46~92시간 |
-| 대규모 | 500M 토큰 | 500M (1 epoch) | ~115시간 |
-
-epoch 대신 **총 학습 토큰 수**로 목표를 관리한다. 소규모 코퍼스(수십만 편)라면
-2~3 epoch 반복하여 목표 토큰 예산을 채운다.
-
-### CPT 종료 기준
-
-```
-다음 중 하나 충족 시 CPT 종료:
-  1. 목표 학습 토큰 수 도달 (예: 200M 토큰)
-  2. eval perplexity가 3 평가 주기 연속 개선 없음 (patience=3)
-  3. 생성 샘플에서 시적 언어 감각 확인 (수동 평가)
-```
-
----
-
-## 2단계: 커리큘럼 SFT
-
-### 커리큘럼 구조
-
-데이터를 난이도/추상성 순서로 제시하면 학습 효율이 높아진다.
-
-
-```
-Stage 1 — 언어 기반 + 형식 학습
-  └── 공공도메인 시, 외국어 시 번역본
-  └── 행갈이/연갈이 토큰이 포함된 구조적 시 데이터
-
-Stage 2 — 메타 지식
-  └── 시론, 시 평론
-  └── 시의 논리와 의도 학습
-
-Stage 3 — CoT 창작
-  └── 창작노트 → 시 페어 데이터
-  └── 창작 과정의 추론 학습
-
-Stage 4 — 수정/반복
-  └── 수정 과정 데이터
-  └── 자기 비평과 개선 학습
-```
-
-### SFT 배치 크기
-
-| 항목 | 값 | 비고 |
-|------|-----|------|
-| Per-device batch size | 1~2 | seq_len=4096, A100 80GB |
-| Gradient accumulation steps | 8~16 | |
-| Effective batch size | 1~2 × 2(GPU) × 8~16 = **16~64** | instruction-output 페어 기준 |
-
-### SFT 핵심 하이퍼파라미터
-
-| 파라미터 | 권장값 | CPT와의 차이 |
-|----------|--------|------------|
-| Learning rate | 3e-6 ~ 8e-6 | CPT보다 낮게 — 세밀한 조정 |
-| LR schedule | Cosine with warmup | 동일 |
-| Warmup ratio | 0.03~0.05 | CPT보다 높게 — 데이터 수 적음 |
-| Max seq length | 4096 | 창작 노트 + 시 충분히 포함 |
-
-### Stage별 토큰 예산 (SFT)
-
-| Stage | 데이터 종류 | 목표 토큰 수 | LR | LR 리셋 |
-|-------|------------|------------|-----|---------|
-| Stage 1 | 언어 기반 + 형식 | ~10M | 8e-6 | CPT 후 리셋 |
-| Stage 2 | 메타 지식 (시론/평론) | ~5M | 5e-6 | Stage 1 후 리셋 권장 |
-| Stage 3 | CoT 창작 노트 → 시 | ~10M | 5e-6 | Stage 2 후 리셋 권장 |
-| Stage 4 | 수정/반복 | ~5M | 3e-6 | Stage 3 후 리셋 권장 |
-| **SFT 합계** | | **~30M 토큰** | | |
-
-> **가설:** Stage 간 LR 리셋(새로운 warmup 포함)이 연속 학습보다 안정적일 수 있다.
-> 실험으로 검증 필요. 총 SFT 예산은 데이터 수집 결과에 따라 5M~50M 범위 조정.
-
-### Stage별 eval 데이터 분리
-
-각 Stage에서 전체 데이터의 5~10%를 validation set으로 고정 분리:
-- Stage 1~2: 시 held-out set perplexity
-- Stage 3~4: 생성 시 품질 수동 평가 (novelty 지표 포함)
-
----
-
-## 조기 종료 기준
-
-소규모 시 데이터셋(수천 편)에서 epoch 반복은 과적합 위험이 높다.
-eval_loss 기준 조기 종료를 필수로 적용한다.
+### 조기 종료 (Early Stopping)
 
 ```python
 from transformers import EarlyStoppingCallback
 
 trainer = Trainer(
-    # ...
-    callbacks=[
-        EarlyStoppingCallback(early_stopping_patience=3)
-        # eval_loss 기준, 3 평가 주기 연속 개선 없으면 중단
-    ],
-    args=TrainingArguments(
-        evaluation_strategy="steps",
-        eval_steps=200,
-        load_best_model_at_end=True,
-        metric_for_best_model="eval_loss",
-        greater_is_better=False,
-    )
+    model=model,
+    args=training_args,
+    train_dataset=train_dataset,
+    eval_dataset=eval_dataset,
+    callbacks=[EarlyStoppingCallback(early_stopping_patience=3)]
 )
+# eval_loss 기준, 3회 평가 주기 연속 개선 없으면 학습 중단
 ```
 
-추가 종료 조건:
-- 생성 샘플에서 반복 루프 3회 이상 발생 → 즉시 학습 중단 검토
-- `grad_norm`이 10 이상으로 지속 → LR 낮추고 재시작
+### 평가 체크포인트
+
+매 N 스텝마다:
+1. 행갈이/연갈이 위치 정확도
+2. 소수의 시 프롬프트로 생성 샘플 수동 평가
+3. Perplexity on held-out poetry set
 
 ---
 
-## 토큰 추가 및 임베딩 리사이즈
+## 3단계: DPO (Direct Preference Optimization) — 선호 정렬
 
-```python
-# 새 특수 토큰 추가
-special_tokens = ["<행갈이>", "<연갈이>", "<시작>", "<끝>", "<음절:N>"]
-tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
+### 목적
 
-# 임베딩 레이어 리사이즈 (필수 — 누락 시 IndexError 발생)
-model.resize_token_embeddings(len(tokenizer))
+SFT로 학습한 포맷 위에 미학적 선호도를 정렬한다. "어떤 시가 더 나은가"라는 인간 판단을 학습 신호로 내재화한다.
+
+### 선호 쌍 구성 방법 (3 페르소나 방식)
+
 ```
+1. 동일한 프롬프트(창작 노트 시드)로 3개의 시인 페르소나가 각각 초안 생성:
+   - 페르소나 A: 이미지 중심 (황지우 계열 — 낯선 이미지 연결, 시각적 충격)
+   - 페르소나 B: 리듬·음악성 중심 (김혜순 계열 — 반복, 음운, 몸의 언어)
+   - 페르소나 C: 관념·해체 중심 (이상 계열 — 논리 해체, 개념 충돌)
+
+2. 외부 심사 모델(GPT-4o 또는 Claude Opus)이 3개 초안을 비교:
+   - 6개 미학 기준(경제성, 필연성, 긴장, 낯설게하기, 열린 끝, 음악성)으로 평가
+   - 또는 학습된 리워드 모델로 대체 (M1 이후)
+
+3. 최고 점수 초안 → chosen (winner)
+   최저 점수 초안 → rejected (loser)
+
+4. (chosen, rejected) 쌍을 DPO 학습 데이터로 저장
+```
+
+### DPO 데이터 포맷
+
+```json
+{
+  "prompt": "창작 노트 시드 텍스트",
+  "chosen": "선택된 시 (winner)",
+  "rejected": "거부된 시 (loser)",
+  "score_chosen": 0.82,
+  "score_rejected": 0.41,
+  "persona_chosen": "image",
+  "persona_rejected": "concept",
+  "judge_model": "gpt-4o",
+  "timestamp": "2026-06-27T00:00:00Z"
+}
+```
+
+저장 경로: `data/dpo_pairs/`
+
+### DPO 하이퍼파라미터
+
+| 파라미터 | 초기값 | 비고 |
+|----------|--------|------|
+| β (KL penalty) | 0.1 | 낮으면 공격적 정렬, 높으면 SFT 근방 유지 |
+| Learning rate | 5e-7 | SFT보다 훨씬 낮게 |
+| Batch size | 8~16 | 쌍(pair) 기준 |
+| Max length | 4096 | prompt + chosen/rejected 합산 |
+| Epochs | 1~3 | 과적합 주의 — 짧게 |
+
+### DPO 후 평가 및 피드백
+
+DPO 이후 생성 샘플을 평가 파이프라인([evaluation_pipeline.md](evaluation_pipeline.md))에 넣어 리워드 모델 점수와 인간 평가 점수 변화를 추적한다.
+
+점수가 개선되지 않으면:
+- 선호 쌍의 margin이 너무 작은지 확인 (score_chosen - score_rejected < 0.2이면 weak pair)
+- 심사 모델 변경 또는 리워드 모델 재보정 검토
+
+### 미래 방향: PRM (Process Reward Model)
+
+DPO가 최종 시 텍스트에 대한 선호를 정렬하는 데 반해, **PRM(Process Reward Model)**은 창작 과정(CoT, 반복 수정 각 단계)에 중간 보상을 부여한다.
+
+> 가설: PRM은 단순 DPO보다 창작 과정 자체의 질을 높이는 데 효과적일 것이다. 그러나 시의 창작 과정에 대한 step-level 레이블링이 필요하며, 이는 인간 전문가 개입 비용이 높다. M3 이후 Phase 1에서 탐색한다.
+
+---
 
 ## 특수 토큰 처리 및 임베딩 초기화
 
-풀 파인튜닝 시 추가되는 특수 토큰(`<행갈이>`, `<연갈이>` 등)의 임베딩이 랜덤하게 남아있으면 학습 초기 수렴이 느려지거나 주변 컨텍스트 표현이 망가질 수 있다. 이를 방지하기 위해 의미적으로 가장 유사한 기존 표준 토큰들의 임베딩을 복사하거나 평균을 내어 초기화한다.
-
-### 임베딩 초기화 파이썬 스크립트
+풀 파인튜닝 시 추가되는 특수 토큰(`<행갈이>`, `<연갈이>` 등)의 임베딩이 랜덤하면 학습 초기 수렴이 느려진다. 의미적으로 유사한 기존 토큰 임베딩으로 초기화한다.
 
 ```python
 import torch
@@ -223,20 +208,15 @@ def initialize_special_token_embeddings():
     model_id = "Qwen/Qwen2.5-32B"
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     model = AutoModelForCausalLM.from_pretrained(
-        model_id, 
-        torch_dtype=torch.bfloat16, 
+        model_id,
+        torch_dtype=torch.bfloat16,
         device_map="auto"
     )
 
-    # 1. 새 특수 토큰 추가 및 모델 토큰 임베딩 레이어 확장
     special_tokens = ["<행갈이>", "<연갈이>", "<시작>", "<끝>"]
     tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
     model.resize_token_embeddings(len(tokenizer))
 
-    # 2. 신규 특수 토큰과 기존 토큰 간 매핑 정의
-    # - <행갈이>는 줄바꿈(\n) 토큰 복사
-    # - <연갈이>는 줄바꿈 연속 입력 또는 빈 줄에 준하는 개행들의 임베딩 평균 복사
-    # - <시작>, <끝>은 기존 챗 템플릿의 시작/끝 또는 BOS/EOS 토큰 복사
     token_mapping = {
         "<행갈이>": ["\n"],
         "<연갈이>": ["\n\n", "\n"],
@@ -247,7 +227,6 @@ def initialize_special_token_embeddings():
     embeddings = model.get_input_embeddings()
     embedding_weight = embeddings.weight.data
 
-    # 3. 매핑 기반 임베딩 초기화 수행
     for new_token, source_tokens in token_mapping.items():
         new_id = tokenizer.convert_tokens_to_ids(new_token)
         if new_id == tokenizer.unk_token_id:
@@ -257,111 +236,35 @@ def initialize_special_token_embeddings():
         source_ids = []
         for src in source_tokens:
             src_id = tokenizer.convert_tokens_to_ids(src)
-            # 토크나이저에 해당 토큰이 실존하는 경우에만 사용
             if src_id != tokenizer.unk_token_id:
                 source_ids.append(src_id)
 
-        # fallback: 매핑된 소스 토큰이 없다면 기본 개행(\n) 사용
         if not source_ids:
             source_ids = [tokenizer.convert_tokens_to_ids("\n")]
 
-        # 평균 임베딩 계산 및 주입
         with torch.no_grad():
             source_embeddings = embedding_weight[source_ids]
             mean_embedding = source_embeddings.mean(dim=0).clone()
             embedding_weight[new_id] = mean_embedding
-        
-        print(f"Success: Initialized {new_token} (ID: {new_id}) with mean embedding of {source_tokens} (IDs: {source_ids})")
+
+        print(f"Success: Initialized {new_token} (ID: {new_id}) with mean embedding of {source_tokens}")
 
 if __name__ == "__main__":
     initialize_special_token_embeddings()
->>>>>>> antigravity
 ```
-
-### 의미 기반 임베딩 초기화
-
-랜덤 초기화 대신, 각 특수 토큰의 기능에 의미적으로 가까운 기존 토큰의
-임베딩으로 초기화하면 수렴이 빠르다.
-
-```python
-import torch
-
-def init_special_token_embedding(model, tokenizer, new_token, ref_tokens):
-    """
-    new_token: 초기화할 특수 토큰 문자열 (예: "<행갈이>")
-    ref_tokens: 의미적으로 가까운 기존 토큰 문자열 리스트
-    """
-    embed = model.get_input_embeddings()
-    new_id = tokenizer.convert_tokens_to_ids(new_token)
-
-    ref_ids = [
-        tokenizer.convert_tokens_to_ids(t)
-        for t in ref_tokens
-        if tokenizer.convert_tokens_to_ids(t) != tokenizer.unk_token_id
-    ]
-    if not ref_ids:
-        return  # 참조 토큰 없으면 랜덤 초기화 유지
-
-    with torch.no_grad():
-        ref_vecs = embed.weight.data[ref_ids]
-        embed.weight.data[new_id] = ref_vecs.mean(dim=0)
-
-# 적용 예시
-init_special_token_embedding(model, tokenizer, "<행갈이>", ["\n", "▲"])
-init_special_token_embedding(model, tokenizer, "<연갈이>", ["\n\n", "\n"])
-init_special_token_embedding(model, tokenizer, "<시작>", ["[", "《", "<"])
-init_special_token_embedding(model, tokenizer, "<끝>",   ["]", "》", ">"])
-```
-
-> **주의**: `resize_token_embeddings` 호출 후 새 토큰의 초기값은 랜덤이므로,
-> 반드시 위 초기화를 학습 시작 전에 적용해야 한다.
-
----
-
-## 학습 안정화
-
-### 배치 크기 요약 (Qwen2.5-32B, A100 80GB × 2, seq_len=4096)
-
-| 단계 | Per-device BS | Grad. Accum. | Effective BS |
-|------|-------------|-------------|------------|
-| CPT | 2~4 | 128~256 | ~2M~4M 토큰 |
-| SFT | 1~2 | 8~16 | 16~64 샘플 |
-
-### Warmup ratio vs 절대값
-
-```python
-TrainingArguments(
-    warmup_ratio=0.03,        # 총 스텝의 3% — 권장
-    # warmup_steps=100,       # 피할 것: 총 스텝 수 모르면 비율이 달라짐
-    lr_scheduler_type="cosine",
-    max_grad_norm=1.0,        # gradient clipping
-)
-```
-
-`warmup_ratio=0.03`은 데이터셋 크기나 epoch 수가 바뀌어도 비율이 유지된다.
-총 스텝이 500이면 warmup 100스텝은 20%(과도), 10,000이면 1%(부족).
-
----
-
-## 평가 체크포인트
-
-매 200 스텝(또는 eval_steps 설정)마다:
-1. `eval_loss` 및 perplexity 기록
-2. 소수의 고정 프롬프트로 생성 샘플 수동 확인
-   - 행갈이/연갈이 토큰이 자연스러운 위치에 나타나는가?
-   - 시가 완결되는가?
-   - 반복 루프가 발생하는가?
-3. novelty 지표 (n-gram 독창성) 자동 계산 (evaluation/ 참조)
 
 ---
 
 ## 미결 사항
 
-- **Stage별 실제 토큰 예산 확정**: 데이터 수집 완료 후 `data/token_budget.md` 집계 결과를 바탕으로 Stage 1~4 토큰 수 재조정 필요
-- **Stage 간 LR 리셋 효과 검증**: 연속 학습 vs Stage별 재시작 중 어느 쪽이 novelty 지표에 유리한지 파일럿(10.7B) 실험으로 확인 필요
-- **다국어 데이터 배치**: 외국어 시 번역본을 CPT에 포함할지, SFT Stage 1에 포함할지 미결
-- **SFT eval 데이터 분리 방법**: Stage별로 독립 validation set을 구성할지, 단일 held-out set을 공유할지 결정 필요
-- **<음절:N> 토큰 초기화 전략**: 숫자 N이 가변이므로 고정 토큰 외 동적 처리 방식 검토
-- **CPT ↔ SFT 및 Stage 전환 시점의 옵티마이저 상태 제어**: CPT에서 SFT로 전환하거나 Stage가 전환될 때 AdamW optimizer의 모멘텀 및 배리언스 상태를 완전히 초기화(Warm Restart)할 것인가, 아니면 스케줄러의 연속성을 유지할 것인가? 초기화하지 않을 경우 이전 Stage 데이터의 그래디언트 바이어스가 새 Stage 학습 초기 단계에 미치는 악영향을 어떻게 최소화할 것인가?
-- **CoT(창작노트) 영역과 시 본문 영역의 Loss Masking 여부**: 모델이 시 창작 과정의 메타 사고(CoT)를 학습하도록 유도하되, 최종 결과물인 시 자체의 퀄리티와 특수 토큰 제어력을 극대화하기 위해 CoT 영역의 loss 가중치를 마스킹하거나 낮추는 설계가 성능 향상에 기여할 것인가?
-- **다국어 시 데이터 학습 시 어휘사전(Vocabulary) 확장 방식**: 다국어 및 외국어 시를 학습할 때, 한국어 기반 모델의 기본 토크나이저 어휘사전으로 인해 발생하는 심각한 토큰 파편화(Token fragmentation)를 극대화하지 않고, 시적 뉘앙스와 외래어 표현을 완벽히 보존하기 위한 추가적인 Vocabulary 최적화 방법은 무엇인가?
+1. **Stage 전환 시점의 옵티마이저 상태 제어**: Stage가 전환될 때 Adam optimizer의 모멘텀 및 배리언스 상태를 완전히 초기화(Warm Restart)할 것인가, 아니면 스케줄러의 연속성을 유지할 것인가?
+
+2. **CoT 영역의 Loss Masking**: 창작 노트(CoT) 영역의 loss 가중치를 마스킹하거나 낮추면 시 본문 품질이 향상되는가? SFT에서 CoT를 학습 신호로 쓸 때와 마스킹할 때의 ablation 실험 필요.
+
+3. **다국어 시 데이터의 어휘사전 확장**: 외국어 시 학습 시 토큰 파편화(token fragmentation)를 최소화하면서 시적 뉘앙스를 보존하는 vocabulary 최적화 방법.
+
+4. **DPO β 값 탐색**: β가 너무 낮으면 리워드 해킹, 너무 높으면 SFT 결과물과 무차별. 시 도메인에서 적절한 β 범위는 파일럿에서 실측 필요.
+
+5. **3 페르소나 간 점수 margin이 작을 때 처리 방침**: score_chosen - score_rejected < 0.2인 weak pair를 DPO 데이터에 포함할지 여부.
+
+6. **PRM 탐색 시점**: M3 이후 Phase 1에서 step-level 보상 모델 실험을 시작할 때 인간 레이블링 비용과 효과 비교 연구.
