@@ -3,7 +3,7 @@ type: Design
 title: 산출물 목표 및 Novelty 필터
 description: 프로젝트가 추구하는 최종 시의 기준 — novelty, 미학적 아이디어, 새로운 수사와 소재.
 tags: [generation, output, novelty, aesthetics]
-timestamp: 2026-06-26T00:00:00Z
+timestamp: 2026-06-27T00:00:00Z
 ---
 
 # 산출물 목표 및 Novelty 필터
@@ -37,31 +37,63 @@ Novelty는 세 차원에서 정의된다:
 - 낡은 소재: 자연, 사랑, 이별, 고향
 - 새로운 소재: 반도체 에칭 공정, 알고리즘, 물류 창고, 데이터센터 소음
 
-## Novelty 필터 (자동화)
+---
 
-생성된 시를 코퍼스 대비 자동으로 평가:
+## 사후 처리 새니티 게이트 필터 (Post-Processing Sanity Gates)
 
-### 필터 1 — n-gram 중복률
-```python
-# 생성 시와 전체 코퍼스의 n-gram 겹침 비율
-# 4-gram 겹침 < 30% → novelty 통과
-novelty_score = 1 - ngram_overlap(generated_poem, corpus, n=4)
-```
+생성된 시 중 명백히 품질이 떨어지거나 구조적으로 붕괴된(repetitive/corrupted) 출력을 차단하기 위해 디코딩 완료 직후 작동하는 사후 처리 필터 세트를 정의한다.
 
-### 필터 2 — 임베딩 거리
-```python
-# 생성 시의 임베딩과 코퍼스 내 가장 가까운 시의 거리
-# 거리 > threshold → novelty 통과
-min_distance = min(cosine_distance(embed(poem), embed(p)) for p in corpus)
-```
+### 1. 행 수 제한 (Line Limits)
+출력된 시의 실질 행(공백 행 제외) 수 $L$이 다음 범위를 만족해야 한다.
+$$3 \le L \le 100$$
+- **최소 3행**: 2행 이하의 텍스트는 시적 긴장감이나 유기적 구조를 형성하기 어려운 단순 문장/구로 판정하여 제외.
+- **최대 100행**: 상한을 초과하는 출력은 모델이 정지 토큰(`<끝>`)을 생성하지 못하고 무한 출력 상태에 빠진 것으로 판정.
 
-### 필터 3 — 소재 분류
-```python
-# 추출된 핵심 소재가 "시적 소재 목록"에 있는 비율
-# 비율 낮을수록 novel
-known_materials = classify_materials(poem)
-novel_ratio = 1 - len(known_materials & common_poetry_materials) / len(known_materials)
-```
+### 2. 반복 패널티 필터 (Repetition Penalty Filters)
+의도적 반복 기법(아나포라, 후렴 등)과 모델의 루프 현상을 엄격히 구분하여 필터링한다.
+
+*   **행 수준 고유성 비율 (Line-Level Uniqueness Ratio)**:
+    공백을 제외한 전체 행의 수 $N_{\text{total}}$과 중복이 제거된 고유 행의 수 $N_{\text{unique}}$에 대해 다음 조건이 충족되어야 한다.
+    $$\frac{N_{\text{unique}}}{N_{\text{total}}} \ge 0.80$$
+    즉, 시 전체에서 완전히 동일한 내용의 행이 20%를 초과하여 반복되면 루프 실패로 간주한다.
+*   **연속 행 중복 필터 (Consecutive Line Repetition)**:
+    동일한 행이 바로 다음 행 혹은 건너뛴 다음 행에 연속해서 등장하는 패턴을 감지한다.
+    - 임의의 $i$에 대해 $L_i == L_{i+1}$ 또는 $L_i == L_{i+2}$ 가 3회 이상 반복 감지될 경우 즉시 필터링한다.
+*   **어구 수준 자모/음절 반복 필터 (Token/Char N-gram Repetition)**:
+    동일한 형태소나 3음절 이상의 어구가 연속으로 3회 이상 반복되는 음절 루프를 탐지하여 제외한다.
+
+### 3. 공백 행 밀도 필터 (Blank Line Density Filters)
+무분별하게 빈 줄을 다수 생성하여 시적 구조를 훼손하는 경우를 필터링한다.
+
+*   **연속 공백 행 상한**:
+    텍스트 내에서 연속된 공백 행의 개수가 2개를 초과할 수 없다. (`max_consecutive_blanks <= 2`)
+*   **공백 행 비율 (Blank Line Ratio)**:
+    전체 행 수(공백 행 포함) $T$ 대비 공백 행의 수 $B$의 비율이 다음을 만족해야 한다.
+    $$\frac{B}{T} \le 0.30$$
+    연갈이 기호(`<연갈이>`)의 의도적인 활용 범위를 고려하되, 30%를 넘는 공백 행은 불합격 처리한다.
+
+---
+
+## Novelty 점수 및 임계값 (Novelty Score Thresholds)
+
+표층적 반복 제거를 넘어, 기존 시의 기시감을 피하고 내부적 풍부함을 확보하기 위해 다음 두 가지 계량화된 Novelty 임계값을 적용한다.
+
+### 1. Distinct-N (내부 어휘 다양성 임계값)
+시 한 편 내부에서 사용된 고유 n-gram의 비율을 측정하여, 시가 단조로운 어휘로 채워지는 현상을 방지한다.
+$$\text{Distinct-N}(p) = \frac{|\text{Unique } n\text{-grams in } p|}{|\text{Total } n\text{-grams in } p|}$$
+*   **Distinct-1 (Unigram)**: $\ge 0.75$ (형태소 기준)
+*   **Distinct-2 (Bigram)**: $\ge 0.85$
+*   **Distinct-3 (Trigram)**: $\ge 0.90$
+
+### 2. 코사인 임베딩 거리 (Cosine Embedding Distance Threshold)
+기존 한국어 현대시 코퍼스 $C_{\text{ref}}$와의 의미론적 거리를 계산하여 표절 및 진부함을 판별한다. 문장/시 수준의 임베딩 모델(예: `KR-SBERT` 또는 시적 맥락이 파인튜닝된 `KoSimCSE`)을 이용하여 시 $p$의 의미 벡터 $E(p)$를 추출한다.
+
+시 $p$와 참조 코퍼스 $C_{\text{ref}}$에 존재하는 임의의 시 $r$ 사이의 최소 코사인 거리를 다음과 같이 구한다.
+$$\text{MinDistance}_{\text{emb}}(p) = \min_{r \in C_{\text{ref}}} \left( 1 - \frac{E(p) \cdot E(r)}{\|E(p)\|_2 \|E(r)\|_2} \right)$$
+*   **통과 임계값**: $\text{MinDistance}_{\text{emb}}(p) \ge 0.25$
+    - 코사인 유사도 기준 $\le 0.75$에 해당하며, 이 임계값 미만인 경우 기존 현대시의 주제와 구조를 과도하게 모방한 것으로 판단하여 탈락시킨다.
+
+---
 
 ## 예외: "좋은 새로움" vs "나쁜 새로움"
 
@@ -78,3 +110,9 @@ novelty가 높다고 무조건 좋은 시가 아니다.
 > 기존에 존재하지 않았던 이미지를 만든다.
 > 행갈이는 리듬의 단위이자 의미의 단위이며,
 > 창작 노트에서 설계된 의도가 시 텍스트에서 자연스럽게 흘러나온다.
+
+## 미결 사항
+
+- [ ] 일반 현대시와 시극/산문시 등 장르별 구조적 특성을 고려하여, 공백 행 밀도(Blank Line Ratio) 임계값을 동적으로 조절하는 최적화 기준은 무엇인가?
+- [ ] 후렴구(Refrain)나 특정 아나포라 수사가 핵심인 시적 형식에서 행 수준 고유성 비율(Line-Level Uniqueness Ratio) 필터의 오탐지(False Positive)를 효과적으로 방지할 수 있는 예외 처리 알고리즘은 어떻게 설계해야 하는가?
+- [ ] 초대형 참조 코퍼스($C_{\text{ref}}$)를 기반으로 코사인 임베딩 거리를 실시간으로 연산할 때 발생하는 지연 시간을 최소화하기 위한 벡터 데이터베이스(예: FAISS, Milvus) 도입 방안 및 실시간 필터링 아키텍처는 무엇인가?
