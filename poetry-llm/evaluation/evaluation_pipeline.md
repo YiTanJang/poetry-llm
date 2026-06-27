@@ -82,28 +82,38 @@ N-gram 독창성 임계값(≥ 0.7)과 임베딩 거리 임계값(≥ 0.3)은 **
 
 - **입력**: 시 텍스트 (창작 노트 포함 또는 미포함)
 - **출력**: 미학적 선호도 스칼라 점수 [0, 1]
-- **학습 데이터**: 인간 시인·독자의 pairwise 선호도 판단 (M1 이전 구축)
+- **학습 데이터**: 인간 시인·독자의 pairwise 선호도 판단 데이터셋
+  - **최소 수량 요구사항**: 
+    - *파일럿 단계 (M1)*: 리워드 모델(RM)의 초기 정렬 및 평가 기준 타당성 검증을 위해 **최소 1,000 ~ 2,000쌍**의 pairwise 데이터셋 구축 필요.
+    - *본 학습 및 DPO 루프 단계 (M2~M3)*: RM의 예측 일반화 성능 확보와 오버피팅 방지를 위해 **최소 5,000 ~ 10,000쌍 이상**의 고품질 pairwise 비교 데이터셋 구축을 권장함.
+  - **데이터 다양성 요건**: 소재 유형(전통/현대/추상), 감정 톤(애도/긴장/무감각/경이), 형식 조건(3연 이내/단시/산문시), 창작 노트(CoT) 유무의 4개 축을 고르게 분배하여 편향을 최소화함.
 - **모델 규모**: 1~7B — 판별 태스크이므로 생성 모델만큼 클 필요 없음
 
 > 가설: 리워드 모델 구축 전 M1 시점까지는 외부 LLM 심사(3단계)로 대체 운영한다.
 
-### DPO 쌍 구성
+### DPO 쌍 구성 및 마진 필터링
 
-2단계의 핵심 역할은 DPO 학습에 쓸 (winner, loser) 쌍을 구성하는 것이다.
+2단계의 핵심 역할은 DPO 학습에 쓸 (chosen, rejected) 쌍을 구성하는 것이다.
 
-```
-쌍 구성 방법:
+#### 마진 필터링 임계값 (Margin Threshold)
+- 리워드 모델이 평가한 두 출력의 점수 차이($\Delta \text{score} = \text{score\_chosen} - \text{score\_rejected}$)가 너무 작은 경우, 리워드 모델 자체의 예측 편차(Noise)가 DPO 학습 신호에 혼입되어 정책 모델(Policy Model)의 최적화를 왜곡할 수 있다.
+- **최적 마진 임계값 (Optimal Margin Threshold)**: **$\ge 0.15$** (0~1 scale 기준)
+- 두 초안 간의 점수 차이가 $0.15$ 미만일 경우, 선호도 신호가 불명확한 것으로 판단하여 해당 쌍을 DPO 학습 데이터셋에서 제외(필터링)한다. 이를 통해 노이즈가 없는 고품질 선호 쌍으로만 학습을 구성한다.
+
+#### DPO 쌍 구성 방법
 1. 동일한 프롬프트(창작 노트 시드)로 3개의 시인 페르소나(persona)가 각각 초안 생성
    - 페르소나 A: 이미지 중심 (황지우 계열)
    - 페르소나 B: 리듬·음악성 중심 (김혜순 계열)
    - 페르소나 C: 관념·해체 중심 (이상 계열)
-2. 리워드 모델(또는 외부 LLM)이 3개 초안을 비교 평가
-3. 최고 점수 초안 → winner
-   최저 점수 초안 → loser
-4. (winner, loser) 쌍을 DPO 학습 데이터로 저장
+2. 리워드 모델(또는 외부 LLM)이 3개 초안을 비교 평가 (점수 $S_A, S_B, S_C \in [0, 1]$ 산출)
+3. 세 초안 중 가장 점수가 높은 초안을 임시 Winner, 가장 낮은 초안을 임시 Loser로 지정
+4. **마진 검증**: $S_{\text{winner}} - S_{\text{loser}} \ge 0.15$ 인지 검사
+   - 만족할 경우: (Winner, Loser)를 각각 (chosen, rejected)로 결정하여 DPO 쌍으로 저장
+   - 미달할 경우: 데이터 노이즈 방지를 위해 쌍 구성을 포기하고 파기
 
-저장 경로: data/dpo_pairs/{checkpoint_id}/
+저장 경로: `data/dpo_pairs/{checkpoint_id}/`
 포맷:
+```json
 {
   "prompt": "...",
   "chosen": "...",    // winner 시
@@ -111,9 +121,11 @@ N-gram 독창성 임계값(≥ 0.7)과 임베딩 거리 임계값(≥ 0.3)은 **
   "score_chosen": 0.82,
   "score_rejected": 0.41,
   "persona_chosen": "rhythm",
-  "persona_rejected": "concept"
+  "persona_rejected": "concept",
+  "margin": 0.41
 }
 ```
+
 
 ### 2단계 채점 결과 활용
 
@@ -422,6 +434,84 @@ class PoetryEvaluationPipeline:
             "final_score": final_score,
             "decision": decision
         }
+
+    def construct_dpo_pair(
+        self, 
+        prompt: str, 
+        personas_outputs: Dict[str, str], 
+        margin_threshold: float = 0.15
+    ) -> Optional[Dict[str, Any]]:
+        """
+        동일 프롬프트에서 생성된 다중 페르소나 초안들을 리워드 모델로 평가하여 
+        최적의 마진 필터링을 거친 DPO 학습용 Pair를 생성한다.
+        
+        Args:
+            prompt: 시 생성에 사용된 공통 프롬프트 (창작 노트 시드 등)
+            personas_outputs: 페르소나명을 키로, 생성된 시 본문을 값으로 하는 딕셔너리
+            margin_threshold: chosen과 rejected 간의 최소 리워드 점수 차이 (기본값: 0.15)
+            
+        Returns:
+            DPO 포맷으로 구성된 딕셔너리 또는 마진 미달로 필터링된 경우 None
+        """
+        valid_candidates = []
+        
+        for persona, poem in personas_outputs.items():
+            # 1. 각 초안에 대한 Sanity Gate 검증
+            passed_sanity, reason = self.run_sanity_gate(poem)
+            if not passed_sanity:
+                logger.info(f"Persona '{persona}' output failed sanity check: {reason}")
+                continue
+                
+            # 2. 리워드 모델 채점
+            try:
+                score = self.get_reward_score(poem)
+                valid_candidates.append({
+                    "persona": persona,
+                    "poem": poem,
+                    "score": score
+                })
+            except Exception as e:
+                logger.error(f"Failed to score persona '{persona}': {e}")
+                
+        # DPO 쌍을 만드려면 최소 2개 이상의 정상 후보가 필요함
+        if len(valid_candidates) < 2:
+            logger.warning(f"Insufficient valid candidates ({len(valid_candidates)}) to construct DPO pair.")
+            return None
+            
+        # 3. 점수 기준 정렬
+        valid_candidates.sort(key=lambda x: x["score"], reverse=True)
+        winner = valid_candidates[0]
+        loser = valid_candidates[-1]
+        
+        margin = winner["score"] - loser["score"]
+        
+        # 4. 마진 임계값 필터링 적용 (노이즈 방지)
+        if margin < margin_threshold:
+            logger.info(
+                f"DPO pair filtered out. Margin {margin:.4f} is below the threshold {margin_threshold:.4f}. "
+                f"(Winner score: {winner['score']:.4f}, Loser score: {loser['score']:.4f})"
+            )
+            return None
+            
+        # 5. DPO 학습 포맷 구성
+        dpo_pair = {
+            "prompt": prompt,
+            "chosen": winner["poem"],
+            "rejected": loser["poem"],
+            "score_chosen": winner["score"],
+            "score_rejected": loser["score"],
+            "persona_chosen": winner["persona"],
+            "persona_rejected": loser["persona"],
+            "margin": margin
+        }
+        
+        logger.info(
+            f"Successfully constructed DPO pair. "
+            f"Chosen: {winner['persona']} ({winner['score']:.4f}), "
+            f"Rejected: {loser['persona']} ({loser['score']:.4f}), "
+            f"Margin: {margin:.4f}"
+        )
+        return dpo_pair
 ```
 
 ---
@@ -557,6 +647,6 @@ final_score < 0.55인 시에 대해 아래 순서로 진단:
 
 ## 미결 사항
 
-- [ ] **리워드 모델(RM) 학습용 pairwise 선호도 데이터 최소 수량**: 파일럿 검증을 위해 500쌍으로 시작하는 것이 타당한가, 아니면 RM의 조기 안정을 위해 2,000쌍 이상의 대규모 구축이 필수적인가?
-- [ ] **DPO 쌍(Pair) 구성 시 점수 임계값(Margin) 기준**: 페르소나별 시 간의 리워드 점수 차이가 극히 미미한 경우(e.g., margin < 0.05)에도 DPO 학습 쌍으로 채택할 것인가, 아니면 데이터 노이즈 방지를 위해 필터링할 것인가?
-- [ ] **외부 LLM 심사 시 에코챔버(Echo Chamber) 편향 보정안**: 심사 모델(GPT-4o/Claude)과 생성 베이스 모델(Qwen)의 지적 성향이 유사해 발생하는 자기 참조적 고평가를 막기 위해, LLM 심사 프롬프트에 구체적으로 어떤 미학적 패널티 제약을 부여할 것인가?
+- [ ] **DPO 다중 Winner 선택 전략**: 동일 프롬프트에서 생성된 3개 페르소나 외에, n개의 추가 후보군을 생성할 시 복수의 (Winner, Loser) 쌍을 추출하여 DPO 학습 데이터를 증강(Augmentation)하는 방식이 학습 효율성에 도움이 될 것인가, 아니면 데이터 간 중복으로 인해 과적합을 유발할 것인가?
+- [ ] **동적 마진 임계값(Dynamic Margin Threshold) 도입**: DPO 학습 진행(Epoch 또는 Step)에 따라 마진 임계값을 동적으로 조절하는 방식(e.g., 학습 초반에는 0.10의 낮은 마진으로 대량 학습 후, 후반에는 0.20의 높은 마진으로 고난도 선호 정렬)이 최종 모델의 미학적 디테일 향상에 기여할 수 있는가?
+- [ ] **다회차 인간 피드백을 통한 리워드 모델 보정(Calibration) 방식**: RLHF/DPO 사이클이 반복됨에 따라 리워드 모델의 점수 분포가 상향 평준화되는 현상(Score Drift)을 방지하기 위해, 정기적인 인간 선호도 데이터 추가 시 어떤 기준으로 앵커(Anchor) 데이터를 정의하여 리워드 모델의 절대적 기준점(Calibration)을 유지할 것인가?
