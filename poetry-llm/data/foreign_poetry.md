@@ -3,7 +3,7 @@ type: Data Source
 title: 외국어 시 데이터
 description: 영어, 일본어, 중국어, 독일어 등 외국어 시 약 500권. 교차 미학 학습 및 보편 시학 습득용.
 tags: [data, foreign, multilingual, open-data]
-timestamp: 2026-06-27T00:00:00Z
+timestamp: 2026-06-28T00:00:00Z
 ---
 
 # 외국어 시 데이터
@@ -98,7 +98,7 @@ timestamp: 2026-06-27T00:00:00Z
   ```
 
 * **행 단위 정렬 및 인터리빙(Interleaving) 구조:**
-  사전 학습(CPT) 및 지도 미세 조정(SFT)에서 직접적인 시행 대응을 유도하기 위해 원문과 번역을 번갈아 배치하는 시퀀스 형태이다. 특수 태그 `<source_start>`, `<source_end>`, `<target_start>`, `<target_end>`를 정의하여 결합한다.
+  원문과 번역을 행 단위로 번갈아 배치하여 직접적인 시행 대응을 유도하는 시퀀스 형태이다. 특수 태그 `<source_start>`, `<source_end>`, `<target_start>`, `<target_end>`를 정의하여 결합한다.
   ```
   <시작>
   <source_start>Sein Blick ist vom Vorübergehn der Stäbe<source_end>
@@ -110,7 +110,48 @@ timestamp: 2026-06-27T00:00:00Z
   <끝>
   ```
 
-### 2. 번역 품질 필터링 및 메타데이터 가이드라인
+### 2. SFT 학습 데이터 구조화 포맷 (SFT Training Data Formats)
+지도 미세 조정(SFT) 단계에서는 번역문과 원문 간의 정합 수준 및 스타일 학습 목적에 따라 두 가지 형태의 prompt-response 템플릿을 다르게 사용한다.
+
+* **블록 분리형 포맷 (Block-Separated Format):**
+  원문 전체를 컨텍스트로 먼저 입력한 뒤, 이에 매핑되는 번역문 전체를 한 번에 출력하도록 유도하는 포맷이다. 시 전체의 구조적 일관성, 연(Stanza)과 연 사이의 문맥적 비약, 전체적인 미학적 분위기(Tone & Manner)를 보존하고 번역하기에 적합하다.
+  ```json
+  {
+    "instruction": "다음 외국어 시를 원작의 미학적 분위기를 살려 한국어로 번역하시오.",
+    "input": "[Original Poem]\nSein Blick ist vom Vorübergehn der Stäbe...\n[Stanza 2]...",
+    "output": "[Translated Poem]\n그의 눈길은 창살들이 지나가는 것을 보다가...\n[Stanza 2]..."
+  }
+  ```
+
+* **시행/연 교차(Interleaved) 포맷:**
+  행 단위 혹은 연 단위로 원문과 번역문을 번갈아 배치하는 포맷이다. 번역 과정에서 발생하는 미시적인 단어 대응, 소리(음운)의 전이, 혹은 한 행 단위의 시각적 형태 대칭성을 엄격하게 제어하여 학습해야 할 때 사용한다.
+  ```json
+  {
+    "instruction": "다음 시의 각 행(Line)을 대칭적으로 번역하고 정렬된 태그 형식으로 출력하시오.",
+    "input": "Sein Blick ist vom Vorübergehn der Stäbe...",
+    "output": "<source_start>Sein Blick ist vom Vorübergehn der Stäbe<source_end>\n<target_start>그의 눈길은 창살들이 지나가는 것을 보다가<target_end>"
+  }
+  ```
+
+### 3. 교차 언어 정렬 및 감정 매핑 메타데이터 (Cross-lingual Alignment & Sentiment Metadata)
+학습 데이터 구성 시 원문과 한국어 번역문 간의 미학적 정합도를 정량화하고, 각 언어권 특유의 감정 및 문예적 사조를 인코딩하기 위해 다음과 같은 메타데이터를 어노테이션한다.
+
+* **의미론적 거리 점수 (Semantic Distance Scores):**
+  - **다국어 임베딩 유사도**: LaBSE 또는 mUSE와 같은 다국어 문장 임베딩 모델을 활용하여 원문 행/연과 한국어 번역 행/연 간의 코사인 유사도를 측정하고 `semantic_similarity` 점수로 기록한다.
+  - **시적 도약도 인덱스**: 단순 직역일 경우 유사도가 매우 높게 나타나지만, 시인 번역자의 '의도적 오역'이나 '시적 변용'이 일어날 경우 유사도가 낮아진다. 이 차이를 통해 '직역(High similarity)'과 '시적 창조(Low similarity)'의 학습 가중치를 조정할 수 있도록 메타데이터로 제공한다.
+
+* **교차 언어 감정/정서 매핑 (Cross-lingual Sentiment & Emotion Mappings):**
+  - **정서 가치 및 각성도(Valence-Arousal-Dominance) 매핑**: 원문에서 느껴지는 감정적 정조와 번역문에서의 감정적 정조가 언어적 차이로 인해 어떻게 변이되는지 어노테이션한다.
+  - **문화적 정서 치환 태그**: 영미시의 'Melancholy(우울)'가 한국어 시어의 '한(恨)'이나 '애수(哀愁)'로 치환되어 표현된 경우, 단순 1:1 감정 단어 대응이 아니라 감정적 맥락이 현지화(Localization)된 방식을 메타 정보(`emotion_adaptation_type`)에 기록하여 모델이 자연스러운 정서 전이를 유도한다.
+
+* **미학적 사조 및 스타일 전이 태그 (Aesthetic Concept & Style Transfer Tags):**
+  - 각 시집 및 시인 데이터에 미학적 사조 정보를 태깅하여 모델이 특정 미학적 개념을 학습할 수 있게 한다.
+    - **영미 현대시/이미지즘(English Modernism/Imagism)**: `imagism`, `sensory_imaging`, `objective_correlative` (구체적 사물 묘사, 주관적 감정 억제)
+    - **독일 사물시(German Dinggedicht)**: `dinggedicht`, `non-human_perspective` (인간 중심에서 벗어나 사물의 관점에서 세계를 집요하게 관찰하여 주객을 전도시키는 기법)
+    - **일본 하이쿠(Japanese Haiku)**: `kireji` (사유의 도약을 이루는 끊어 읽는 말), `kigo` (계절을 매개하는 사물)
+  - 이 태그들은 지도 미세 조정(SFT) 프롬프트 설계 시 조건화 변수(Conditioning Variables)로 인입되어 "독일 사물시(Dinggedicht)의 시선으로 도시의 사물을 묘사하시오"와 같은 지시 수행이 가능하도록 돕는다.
+
+### 4. 번역 품질 필터링 및 메타데이터 가이드라인
 * **역자 정보(Translator's ID) 필수 기입**: 황현산, 김현, 김춘수 등 시학적 완성도가 검증된 번역을 선별하여 번역자의 이름을 데이터셋에 라벨링한다.
 * **직역 vs 시적 변용 레이블**: 원문의 구조를 그대로 살린 '직역(Literal)'과 한국어의 자수율/가락을 살려 변형한 '의역/시적 변용(Poetic Adaptation)'을 레이블로 명시하여, 모델이 필요에 따라 기계적 의미 매핑 또는 예술적 변용 방식을 구분하여 학습하게 한다.
 * **역자 주석(Translator's Commentaries) 연계**: 특정 시어 번역의 미학적 이유를 서술한 해설서나 시평이 존재할 경우, 평론 데이터(`poetry_criticism.md`)와 연계하여 메타 지식으로 제공한다.
@@ -148,3 +189,5 @@ timestamp: 2026-06-27T00:00:00Z
 - [Ph1] 번역문-원문 병렬 데이터 수집 시, 기계 번역(NMT)을 활용해 자동 정렬을 수행할 경우 발생할 수 있는 시학적 왜곡(예: 행/연 구조 붕괴)을 방지할 수 있는 정량적 필터링 기준은 무엇인가?
 - [TODO] 일본 하이쿠의 끊어 읽는 말(Kireji)이나 계어(Kigo)의 미학적 기능을 한국어 현대시로 이식할 때, 정형적 3행 구조를 강제할 것인가 혹은 한국어 구어체의 호흡을 고려한 가변적 줄바꿈을 권장할 것인가?
 - [Ph1] 다국어 시 텍스트(독일어, 중국어, 일본어 등)의 원문 학습 시, 한국어 중심의 토크나이저 어휘 사전(Vocabulary)에서 발생하는 토큰 파편화(Fragmentation) 문제를 해결하고 임베딩 공간에서 교차 언어적 정렬을 극대화할 수 있는 토큰화 기법은 무엇인가?
+- [Ph1] 교차 언어 감정 매핑 메타데이터 구축 시, 번역 과정에서 발생하는 정서의 문화적 변이(예: 원문의 'Melancholy'가 한국어 번역에서 '한(恨)'의 정조로 변용될 때)로 인한 감정 유사도 점수의 왜곡을 완화하고, 다차원적인 감정 보존율을 표현할 수 있는 평가 척도는 무엇인가?
+- [Ph2] SFT 학습 데이터에서 블록 분리형 포맷과 교차(Interleaved) 포맷의 최적의 조합 비율은 무엇이며, 두 포맷이 학습 모델의 창작 중 교차 미학적 스타일 전이 능력(예: 한국어로 시를 지을 때 영미 현대시나 독일 사물시 기법을 융합하는 능력)에 어떤 상이한 효과를 미치는가?
