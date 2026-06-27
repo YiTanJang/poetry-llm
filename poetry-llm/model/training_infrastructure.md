@@ -39,22 +39,77 @@ Qwen2.5-32B + A100 80GB × 2장 → FSDP
   └── GPU당 메모리 요구량 ~1/N로 감소
 ```
 
-### FSDP 기본 설정 (accelerate config 기준)
+### 분산 학습 설정 템플릿
+
+#### 1. FSDP 설정 (Hugging Face Accelerate - `accelerate_config.yaml`)
 
 ```yaml
-# accelerate_config.yaml
 compute_environment: LOCAL_MACHINE
+debug: false
 distributed_type: FSDP
+downcast_bf16: 'no'
 fsdp_config:
   fsdp_auto_wrap_policy: TRANSFORMER_BASED_WRAP
   fsdp_backward_prefetch_policy: BACKWARD_PRE
   fsdp_cpu_ram_efficient_loading: true
-  fsdp_offload_params: false          # A100 VRAM 충분하면 off
-  fsdp_sharding_strategy: FULL_SHARD  # ZeRO-3 동등
+  fsdp_forward_prefetch_limit: 2
+  fsdp_offload_params: false          # VRAM 여유 시 false, OOM 발생 시 true (CPU Offload)
+  fsdp_sharding_strategy: FULL_SHARD  # ZeRO-3와 동일한 파라미터/그래디언트/옵티마이저 샤딩
   fsdp_state_dict_type: SHARDED_STATE_DICT
+  fsdp_transformer_layer_cls_to_wrap: Qwen2DecoderLayer # Qwen2.5 래핑 레이어 명시
+machine_rank: 0
+main_training_function: main
+mixed_precision: bf16
 num_machines: 1
-num_processes: 2                       # GPU 2장
+num_processes: 2                       # A100 GPU 장수 (2장 기준)
+rdzv_backend: static
+same_network: true
+use_cpu: false
 ```
+
+#### 2. DeepSpeed ZeRO-3 설정 (`ds_config_zero3.json`)
+
+DeepSpeed ZeRO-3는 매개변수, 그래디언트, 옵티마이저 상태를 모두 분할하여 대규모 GPU 클러스터에서 분산 학습 시 VRAM 오버헤드를 극적으로 제한한다.
+
+```json
+{
+  "fp16": {
+    "enabled": false
+  },
+  "bf16": {
+    "enabled": true
+  },
+  "zero_optimization": {
+    "stage": 3,
+    "offload_optimizer": {
+      "device": "none",
+      "pin_memory": true
+    },
+    "offload_param": {
+      "device": "none",
+      "pin_memory": true
+    },
+    "overlap_comm": true,
+    "contiguous_gradients": true,
+    "sub_group_size": 1e9,
+    "reduce_bucket_size": "auto",
+    "stage3_prefetch_bucket_size": "auto",
+    "stage3_param_persistence_threshold": "auto",
+    "stage3_max_live_parameters": 1e9,
+    "stage3_max_reuse_distance": 1e9,
+    "stage3_gather_1d_tensor_gradient": true
+  },
+  "gradient_accumulation_steps": "auto",
+  "gradient_clipping": "auto",
+  "steps_per_print": 2000,
+  "train_batch_size": "auto",
+  "train_micro_batch_size_per_gpu": "auto",
+  "wall_clock_breakdown": false
+}
+```
+
+> [!TIP]
+> GPU VRAM이 부족한 환경(예: 2x A100 80GB)에서 OOM이 발생할 경우, `"offload_optimizer"`의 `"device"`를 `"cpu"`로 변경하여 CPU Offload를 활성화할 수 있다.
 
 ---
 
@@ -94,75 +149,117 @@ model.gradient_checkpointing_enable(
 )
 ```
 
-### 메모리 예산 (Qwen2.5-32B, A100 80GB × 2, FSDP Full Shard 기준)
+### GPU 메모리 할당 분석 및 OOM 완화 전략
 
-| 구성 요소 | 메모리 (per GPU) |
-|-----------|-----------------|
-| 모델 파라미터 (bf16) | ~32 GB → FSDP 샤딩 후 ~16 GB |
-| 그래디언트 (bf16) | ~16 GB → 샤딩 후 ~8 GB |
-| 옵티마이저 상태 (AdamW fp32) | ~128 GB → 샤딩 후 ~64 GB |
-| Activation (gradient checkpointing on) | ~4~8 GB (시퀀스 길이 의존) |
-| **합계 (추정)** | **~90~96 GB → 위험 구간** |
+Qwen2.5-32B 모델(정밀도 bf16, 실제 파라미터 수 $\Phi \approx 32.5 \times 10^9$)의 풀 파인튜닝을 수행할 때, GPU 메모리는 크게 **모델 상태(Model States)**, **활성화(Activations)**, 그리고 **임시 버퍼(Temporary/Communication Buffers)**로 나뉜다.
 
-> 옵티마이저 상태가 병목. 8-bit AdamW (bitsandbytes) 또는 Adafactor 사용 시
-> 옵티마이저 메모리를 절반 이하로 줄일 수 있다.
+#### 1. 모델 상태 메모리 수학적 분석
+
+모델 상태는 파라미터, 그래디언트, 그리고 옵티마이저 상태(AdamW 기준)로 구성된다.
+
+- **파라미터 ($\Phi$ - bf16)**: $2 \text{ bytes/parameter} \times 32.5\text{B} \approx 65.0\text{ GB}$
+- **그래디언트 ($G$ - bf16)**: $2 \text{ bytes/parameter} \times 32.5\text{B} \approx 65.0\text{ GB}$
+- **옵티마이저 상태 ($O$ - AdamW fp32)**: $12 \text{ bytes/parameter} \times 32.5\text{B} \approx 390.0\text{ GB}$  
+  *(fp32 복사본 가중치 4 bytes + 모멘텀 4 bytes + 분산 4 bytes)*
+- **8-bit AdamW 도입 시 옵티마이저 상태**: $6 \text{ bytes/parameter} \times 32.5\text{B} \approx 195.0\text{ GB}$  
+  *(fp32 복사본 가중치 4 bytes + 8-bit 모멘텀 1 byte + 8-bit 분산 1 byte)*
+
+#### 2. ZeRO 분산화 전략에 따른 GPU당 모델 상태 메모리 수식 ($N$ = GPU 개수)
+
+- **ZeRO Stage 1 (Optimizer State Sharding)**:
+  $$\text{Memory}_{\text{state}} = \Phi + G + \frac{O}{N} = 65.0 + 65.0 + \frac{390.0}{N}\text{ GB}$$
+  - $N=8$인 경우 GPU당 $\approx 178.75\text{ GB}$ (A100 80GB에서 **OOM**)
+- **ZeRO Stage 2 (Optimizer + Gradient Sharding)**:
+  $$\text{Memory}_{\text{state}} = \Phi + \frac{G + O}{N} = 65.0 + \frac{65.0 + 390.0}{N}\text{ GB}$$
+  - $N=8$인 경우 GPU당 $\approx 121.88\text{ GB}$ (A100 80GB에서 **OOM**)
+- **ZeRO Stage 3 / FSDP Full Shard (Parameter + Gradient + Optimizer Sharding)**:
+  $$\text{Memory}_{\text{state}} = \frac{\Phi + G + O}{N} = \frac{520.0}{N}\text{ GB}$$
+  - $N=8$인 경우 GPU당 $\approx 65.0\text{ GB}$ (VRAM 여유 약 $15\text{ GB}$로 아슬아슬하게 학습 가능)
+  - **8-bit AdamW 적용 및 ZeRO-3 ($N=8$)**:
+    $$\text{Memory}_{\text{state}} = \frac{65.0 + 65.0 + 195.0}{8} = \frac{325.0}{8} \approx 40.63\text{ GB}$$
+    (VRAM 여유 약 $39.37\text{ GB}$ 확보로 안전하게 학습 가능)
+
+#### 3. 활성화 메모리(Activation Memory) 분석 및 OOM 임계점
+
+활성화 메모리는 순전파 시 역전파를 위해 레이어의 입출력 및 중간 연산 결과를 VRAM에 유지하는 영역이다.
+
+- **기본 활성화 메모리 추정 (시퀀스 길이 $L$, 배치 크기 $B$, 은닉 차원 $h$, 레이어 수 $a$)**:
+  FlashAttention과 Activation Checkpointing이 없을 경우, 셀프 어텐션 행렬 연산으로 인해 시퀀스 길이 $L$에 대해 이차 연산 오버헤드($O(L^2)$)가 추가되어 기하급수적으로 메모리가 증가한다.
+  - **OOM 임계점**: $B=1, L=4096$ 환경에서도 체크포인팅이 없으면 활성화 메모리가 $100\text{ GB}$를 초과하여 A100 80GB에서 즉시 OOM이 발생한다.
+
+- **활성화 메모리 완화 전략**:
+  1. **FlashAttention-2**: $O(L^2)$ 크기의 어텐션 행렬을 VRAM에 완전히 올리지 않고 SRAM 상에서 온라인 Softmax를 계산하여, 활성화 메모리 스케일링을 $O(L)$ 수준으로 대폭 축소한다.
+  2. **Activation Checkpointing (선택적/전체 재계산)**: 모든 레이어의 중간 연산값을 들고 있는 대신 레이어 경계의 텐서만 보관하고 역전파 시 필요한 값만 재계산한다.
+     - 전체 활성화 체크포인팅 적용 시 활성화 메모리 수식:
+       $$\text{Memory}_{\text{activation}} \approx 2 \cdot B \cdot L \cdot h \cdot a + A_{\text{one\_layer\_activation}}$$
+       Qwen2.5-32B ($h=5120, a=64$, $B=1, L=4096$) 기준 약 **$3.7\text{ GB}$** 내외로 대폭 감소한다.
+  3. **ZeRO-Offload (CPU/NVMe Offload)**:
+     - GPU VRAM이 부족한 극단적 환경(예: 2x A100 80GB)에서 옵티마이저 상태(390GB 또는 195GB)를 시스템 호스트 메모리(CPU DDR RAM)로 오프로드한다.
+     - PCIe Gen4/Gen5를 통해 파라미터 업데이트 시에만 데이터를 통신하므로, 연산 속도는 대폭 저하(약 20%~40% 페널티)되지만 메모리 부족으로 인한 학습 실패를 완전히 방지할 수 있다.
 
 ```python
-# 8-bit AdamW로 옵티마이저 메모리 절감
+# 8-bit AdamW로 옵티마이저 메모리 절감 구현 예시
 from bitsandbytes.optim import AdamW8bit
 
+# optimizer 정의 시 bitsandbytes의 8-bit 구현체 사용
 optimizer = AdamW8bit(model.parameters(), lr=1e-5, weight_decay=0.01)
 ```
 
 ---
 
-## 실제 A100 학습 비용 추정 (Qwen2.5-32B 기준)
+## 클라우드 GPU 서버 및 학습 비용 추정 (Qwen2.5-32B 풀 파인튜닝)
 
-### 전제 조건
+Qwen2.5-32B 모델의 풀 파인튜닝 비용을 클라우드 인프라 제공업체(Lambda Labs, RunPod, 주요 CSP 등)의 단가와 하드웨어 스펙별 성능(MFU, 처리량)을 기반으로 추정한다.
 
-| 항목 | 값 |
-|------|-----|
-| 학습 토큰 수 | 50M~200M 토큰 (시 코퍼스 규모 의존) |
-| A100 80GB 클라우드 단가 | $2.0~$3.5/시간·장 (Lambda Labs, RunPod 기준 2025) |
-| GPU 수 | A100 × 2장 |
-| 처리량 (추정) | ~1,000~1,500 토큰/초 (bf16 + gradient checkpointing, seq_len=4096) |
+### 1. GPU 서버 하드웨어 구성 및 단가 비교 (2026년 기준)
 
-### 비용 계산
+| 노드 구성 | GPU 연결성 (Interconnect) | peak bf16 성능 (GPU당) | 시간당 예상 단가 (온디맨드) | 시간당 예상 단가 (스팟/예약) |
+|---|---|---|---|---|
+| **8x H100 (80GB) SXM5** | NVLink (900 GB/s) | 989 TFLOPs | $\$30.00 \sim \$45.00$ | $\$18.00 \sim \$25.00$ |
+| **8x A100 (80GB) SXM4** | NVLink (600 GB/s) | 312 TFLOPs | $\$15.00 \sim \$22.00$ | $\$8.00 \sim \$12.00$ |
+| **4x A100 (80GB) SXM4** | NVLink (600 GB/s) | 312 TFLOPs | $\$8.00 \sim \$11.00$ | $\$4.50 \sim \$6.50$ |
+| **2x A100 (80GB) SXM4** | NVLink (600 GB/s) | 312 TFLOPs | $\$4.00 \sim \$5.50$ | $\$2.20 \sim \$3.50$ |
+| **8x RTX 6000 Ada (48GB)** | PCIe Gen4 (64 GB/s) | 145 TFLOPs | $\$10.00 \sim \$14.00$ | $\$6.00 \sim \$9.00$ |
 
-```
-학습 시간 = 총 학습 토큰 ÷ 처리량
+### 2. 학습 처리량 및 MFU(Model FLOPs Utilization) 분석
 
-시나리오 A (소규모: 50M 토큰):
-  학습 시간 = 50,000,000 ÷ 1,200 = ~11.6시간
-  GPU 비용 = 11.6 × 2장 × $2.5 = ~$58
+- **학습 연산량 공식**: 토큰당 연산량 $\approx 6 \times P$ (Forward 2회 + Backward 4회 연산).
+  - Qwen2.5-32B ($P = 32.5 \times 10^9$) 기준: 토큰당 $\approx 1.95 \times 10^{11}$ FLOPs 요구.
+- **실제 MFU 추정**:
+  - **8x H100 SXM5 Node**: NVLink 대역폭이 넓고 분산 통신 병목이 적어 FlashAttention-2 + ZeRO-3 적용 시 **MFU 약 40%** 유지 가능.  
+    $$\text{Tokens/sec/GPU} = \frac{989 \times 10^{12} \times 0.40}{1.95 \times 10^{11}} \approx 2,028 \text{ tokens/sec}$$
+    8장 노드 총합 처리량: **$\approx 16,224$ tokens/sec**
+  - **8x A100 SXM4 Node**: **MFU 약 42%** 달성 가능.  
+    $$\text{Tokens/sec/GPU} = \frac{312 \times 10^{12} \times 0.42}{1.95 \times 10^{11}} \approx 672 \text{ tokens/sec}$$
+    8장 노드 총합 처리량: **$\approx 5,376$ tokens/sec**
+  - **4x A100 SXM4 Node**: **MFU 약 42%** 달성 가능. 4장 노드 총합 처리량: **$\approx 2,688$ tokens/sec**
+  - **2x A100 SXM4 Node (CPU Offload 활성화)**: VRAM 제한 극복을 위해 optimizer offload를 사용하므로 PCIe 전송 병목이 추가되어 **MFU 약 30%**로 저하됨.  
+    $$\text{Tokens/sec/GPU} = \frac{312 \times 10^{12} \times 0.30}{1.95 \times 10^{11}} \approx 480 \text{ tokens/sec}$$
+    2장 노드 총합 처리량: **$\approx 960$ tokens/sec**
 
-시나리오 B (중규모: 100M 토큰):
-  학습 시간 = 100,000,000 ÷ 1,200 = ~23.1시간
-  GPU 비용 = 23.1 × 2장 × $2.5 = ~$116
+### 3. 데이터셋 규모별 학습 시간 및 비용 시뮬레이션
 
-시나리오 C (커리큘럼 전체: 200M 토큰):
-  학습 시간 = 200,000,000 ÷ 1,200 = ~46.3시간
-  GPU 비용 = 46.3 × 2장 × $2.5 = ~$231
-```
+다양한 코퍼스 크기(50M, 100M, 500M tokens)와 학습 서버 설정에 따른 소요 시간 및 최종 비용을 산출한 표이다. (가정 단가: H100 8장 = $\$35.00/\text{hr}$, A100 8장 = $\$18.00/\text{hr}$, A100 4장 = $\$9.00/\text{hr}$, A100 2장(Offload) = $\$4.50/\text{hr}$)
 
-### 토큰 수 → 실제 데이터 규모 환산
+| 노드 구성 | 지표 | 시나리오 A (50M Tokens) | 시나리오 B (100M Tokens) | 시나리오 C (500M Tokens) |
+|---|---|---|---|---|
+| **8x H100 SXM5** | 소요 시간 | 0.86 시간 | 1.71 시간 | 8.56 시간 |
+| | **예상 비용** | **$\approx \$30.10$** | **$\approx \$59.85$** | **$\approx \$299.60$** |
+| **8x A100 SXM4** | 소요 시간 | 2.58 시간 | 5.16 시간 | 25.81 시간 |
+| | **예상 비용** | **$\approx \$46.44$** | **$\approx \$92.88$** | **$\approx \$464.58$** |
+| **4x A100 SXM4** | 소요 시간 | 5.16 시간 | 10.32 시간 | 51.62 시간 |
+| | **예상 비용** | **$\approx \$46.44$** | **$\approx \$92.88$** | **$\approx \$464.58$** |
+| **2x A100 SXM4 (Offload)**| 소요 시간 | 14.47 시간 | 28.94 시간 | 144.68 시간 |
+| | **예상 비용** | **$\approx \$65.12$** | **$\approx \$130.23$** | **$\approx \$651.06$** |
 
-```
-한국어 시 1편 ≈ 100~500 토큰
-창작노트+시 페어 ≈ 500~2,000 토큰
+### 4. 비용 최적화 및 인프라 의사결정 전략
 
-50M 토큰 ≈ 시 단독 100,000~500,000편
-           또는 CoT 페어 25,000~100,000건
-
-현실적 데이터셋 규모가 수천~수만 편 수준이라면
-epoch를 2~5회 반복하거나 데이터 증강 필수
-```
-
-### 비용 최적화 전략
-
-1. **스팟 인스턴스 활용**: RunPod Spot, Lambda Spot — 단가 50~70% 절감, 단 중단 위험
-2. **파일럿 먼저**: SOLAR-10.7B로 파이프라인 검증 → 비용 ~1/10
-3. **LoRA 파일럿 후 풀 파인튜닝**: 하이퍼파라미터 확정 후 본 학습
+1. **학습 속도 vs 비용 균형**:
+   - 4x A100 SXM4와 8x A100 SXM4는 시간당 비용 대비 처리량이 선형으로 증가하므로 총비용 차이가 크지 않다. 따라서 예산 범위 내에서 개발 속도 향상을 위해 **8x A100 SXM4 노드**를 대여하는 것이 작업 효율성 측면에서 권장된다.
+   - 단기 실험이나 빠른 반복이 필요한 경우 **8x H100 SXM5**가 가장 탁월한 속도대비 가성비를 보여준다.
+2. **2x A100 (Offload)의 비실용성**:
+   - 2x A100 환경에서 오프로드를 사용하면 총학습 시간은 100M 토큰 기준 29시간에 달하며, 오버헤드로 인해 오히려 총 비용이 4x/8x A100보다 높아진다. 따라서 2장 환경에서의 풀 파인튜닝은 디버깅 목적으로만 제한하고, 실 학습은 4장 이상의 노드에서 수행하는 것이 타당하다.
+3. **스팟 인스턴스 전략**: 스팟 계약을 통해 최대 50%의 추가 할인을 노리되, 체크포인트 저장 주기(`save_steps`)를 200스텝으로 타이트하게 설정하여 불시의 노드 회수에 대응한다.
 
 ---
 
@@ -323,7 +420,6 @@ eval_loss가 N 평가 주기 연속 개선되지 않으면 중단:
 
 ## 미결 사항
 
-- 실제 시 코퍼스 토큰 수 집계 후 비용 재추정 필요
-- 클라우드 vs 로컬 GPU 서버 결정 (초기 비용 vs 운영 비용 트레이드오프)
-- FSDP + 8-bit AdamW 조합의 실제 메모리 측정값 확인 필요
-- WandB 프로젝트 네이밍 컨벤션 사전 정의
+- **FSDP와 DeepSpeed ZeRO-3 간의 2개 노드 이상 분산 환경에서의 상호 대역폭 병목 및 통신 효율 측정**: 단일 노드(GPU 8장) 대비 다중 노드로 확장 시 FSDP의 backward prefetch policy와 DeepSpeed의 overlap_comm 통신 오버헤드 차이 검증 필요.
+- **8-bit AdamW 사용 시의 가중치 정밀도 저하가 시적 novelty 및 수사적 특이성 학습에 미치는 장기적 영향 검증**: 32B 모델의 풀 파인튜닝에서 8-bit optimizer가 fp32 master weights와 8-bit gradient를 조합할 때, 미세한 가중치 업데이트 손실이 한국어 고유의 미학적 시 작법 학습에 부정적 영향을 미치는지에 대한 실험적 평가 필요.
+- **CPU Offload 활성화 시 PCIe Gen4 대역폭 병목으로 인한 MFU(Model FLOPs Utilization) 감소율 예측 및 A100 NVLink 미탑재 환경에서의 오버헤드 완화 대책**: 4x A100 PCIe 환경에서 optimizer offload 사용 시, NVLink SXM4 대비 PCIe Gen4 대역폭 한계로 인한 학습 속도 저하(MFU 30% 이하 예상)를 극복하기 위한 커스텀 gradient accumulation tuning의 타당성.
