@@ -15,6 +15,9 @@ timestamp: 2026-06-26T00:00:00Z
 - git 저장소 초기화 및 에이전트 브랜치 전략 수립
 
 ## 2026-06-27 (Antigravity Agent)
+- `poetry-llm/model/peft_vs_full_finetuning.md` 신규 생성 및 `index.md` 수정: Qwen2.5-32B 모델의 시 생성에 대한 LoRA(PEFT)와 풀 파인튜닝 비교 분석, 하이브리드/전환 전략, 세부 하이퍼파라미터 및 VRAM 메모리 프로파일링 추정, LoraConfig 및 FSDP Trainer 코드 예시 작성.
+- `poetry-llm/preprocessing/line_break_tokens.md` 수정: 행갈이/연갈이 특수 토큰 설계 설명 보강 및 Python 기반 `PoetryPreprocessor`/`PoetryPostprocessor`/`PoetryValidator` 구체적 구현 및 검증 파이프라인 추가.
+- `poetry-llm/evaluation/evaluation_pipeline.md` 수정: 3단계 평가 파이프라인(Sanity Gate, Reward Model, LLM-as-a-Judge)의 구체적인 Python 클래스 및 API 호출 실패 예외 처리(exponential backoff/fallback) 구현 추가.
 - `poetry-llm/data/augmentation.md` 수정: 역번역 메트릭(COMET-QE, PEPR), 모델 선정 기준, 세대 품질 퇴화(Model Collapse) 대책, 파이프라인 워크플로우 추가 및 실제 시인 퇴고 데이터 획득 전략 추가.
 - `poetry-llm/data/token_budget.md` 수정: 한국어 토크나이저 효율성 정밀 비교, 도메인 적응 scaling laws 및 1% replay buffer 전략 적용, 8x A100 80GB 하드웨어 VRAM 소모 구조 분석 및 GPU-hours 산출, 단계별 학습 로드맵 및 토큰 임계점 설정.
 - `poetry-llm/research/prior_art_failures.md` 수정: 최신 AI 시 창작 실패 패턴(2024-2026), 디코딩 샘플링(T, p)의 확률분포적 관점 한계, 한국어 띄어쓰기/조사 오류 사례 및 시적 리듬 파괴 예시 추가, 음성 상징어 창작 실패 원인 분석, 신체성 및 미학적 결단 부재로 인한 감흥 실패 요인 분석, 대응 전략 테이블 내 검증 방법 컬럼 추가.
