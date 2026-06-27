@@ -3,7 +3,7 @@ type: Design
 title: 학습 인프라 설계
 description: Qwen2.5-32B 풀 파인튜닝 기준 분산 학습 설정, 비용 추정, 안정화 전략, 모니터링 지표.
 tags: [model, training, infrastructure]
-timestamp: 2026-06-27T00:00:00Z
+timestamp: 2026-06-28T00:00:00Z
 ---
 
 # 학습 인프라 설계
@@ -113,6 +113,47 @@ DeepSpeed ZeRO-3는 매개변수, 그래디언트, 옵티마이저 상태를 모
 
 ---
 
+## 백워드 프리페치(Backward Prefetch) 및 통신 중첩(Overlap) 비교
+
+분산 학습 환경(FSDP 및 DeepSpeed ZeRO-3)에서 모델 파라미터가 GPU들에 분할(Sharding)되어 있으므로, 역전파(Backward Pass) 과정에서 각 레이어의 그래디언트를 계산하기 전에 해당 레이어의 파라미터를 다른 GPU들로부터 모으는(AllGather) 통신이 매번 발생한다. 이 통신 지연시간을 줄이기 위해 제공되는 핵심 기능이 **백워드 프리페치(Backward Prefetch)** 정책이다.
+
+### 1. PyTorch FSDP 백워드 프리페치 정책
+
+PyTorch FSDP는 `fsdp_backward_prefetch_policy`를 통해 다음 두 가지 모드를 제공한다:
+
+*   **`BACKWARD_PRE` (Prefetch Before)**:
+    *   **작동 방식**: 현재 레이어 $N$의 역전파 연산을 수행하는 동안, FSDP 엔진이 백그라운드 스트림에서 다음 연산 대상인 레이어 $N-1$의 파라미터를 모으는 AllGather 통신을 미리 시작한다.
+    *   **통신 오버헤드**: 연산과 통신(AllGather)을 완전히 중첩(Overlap)시켜 GPU가 통신 완료를 기다리며 노는 대기 시간(Idle Time)을 대폭 줄인다.
+    *   **VRAM 사용량**: 레이어 $N$의 언샤딩(Unsharded) 파라미터와 레이어 $N-1$의 프리페치된 언샤딩 파라미터가 VRAM에 동시에 존재해야 하므로, **피크 VRAM 사용량(Peak VRAM)이 증가**한다.
+*   **`BACKWARD_POST` (Prefetch After)**:
+    *   **작동 방식**: 현재 레이어 $N$의 연산이 끝난 직후 혹은 그래디언트 축소(ReduceScatter)가 시작될 때 레이어 $N-1$의 AllGather를 실행한다.
+    *   **통신 오버헤드**: `BACKWARD_PRE`에 비해 연산과 통신의 중첩 범위가 좁아, 통신 지연이 학습 속도 병목으로 작용할 가능성이 크다.
+    *   **VRAM 사용량**: 여러 레이어의 언샤딩 파라미터가 동시에 VRAM을 점유하는 기간이 짧아, 피크 VRAM 사용량을 억제할 수 있다.
+*   **`None` (프리페치 비활성화)**:
+    *   레이어 $N-1$의 연산 직전에 AllGather를 수행한다. VRAM 사용량은 최소화되지만, 통신 병목이 극대화되어 MFU가 심각하게 저하된다.
+
+### 2. DeepSpeed ZeRO-3 프리페치 및 통신 중첩 정책
+
+DeepSpeed는 `overlap_comm`과 여러 세부 버킷 설정을 조합하여 프리페치를 제어한다:
+
+*   **`"overlap_comm": true`**:
+    *   그래디언트 축소(ReduceScatter) 및 파라미터 프리페치(AllGather) 통신을 연산(Computation) 스트림과 동시에 병렬 실행한다. FSDP의 프리페치 메커니즘과 유사하게 통신 오버헤드를 대폭 완화한다.
+*   **`stage3_prefetch_bucket_size`**:
+    *   앞으로 필요한 파라미터를 미리 모을 때의 버킷 크기(파라미터 개수 단위)를 설정한다. 값이 클수록 프리페치 효율이 좋아지지만 VRAM 점유량이 증가한다.
+*   **`stage3_max_live_parameters`**:
+    *   VRAM 내에 복원(Unsharded)된 상태로 동시에 존재할 수 있는 최대 파라미터 수를 강제 제한한다. 프리페치가 과도하게 일어나 VRAM을 잠식하는 것을 막아 OOM을 방지하는 안전장치 역할을 한다.
+
+### 3. FSDP vs DeepSpeed 비교 및 VRAM/통신 오버헤드 영향 요약
+
+| 비교 항목 | PyTorch FSDP (`BACKWARD_PRE`) | DeepSpeed ZeRO-3 (`overlap_comm` + Prefetch) |
+|---|---|---|
+| **통신 중첩 방식** | 레이어 단위(Transformer Layer 블록) 프리페치 | 설정된 파라미터 버킷 크기 단위 비동기 프리페치 |
+| **통신 오버헤드 감쇄** | 매우 우수 (대기 시간 최소화) | 매우 우수 (버킷 튜닝을 통해 통신 오버헤드 최적화 가능) |
+| **VRAM 사용량** | 상대적으로 큼 (연속된 레이어들의 언샤딩 가중치가 상주) | 버킷 크기 및 `max_live_parameters` 제한으로 미세 조율 가능 |
+| **2x A100 환경 권장** | **`BACKWARD_PRE` 적용 권장** (Offload 활성화로 부족한 VRAM을 충당하고 속도 저하를 최소화) | `"overlap_comm": true` 사용하되 버킷 크기를 `auto` 혹은 보수적으로 설정하여 OOM 회피 |
+
+---
+
 ## bf16 Mixed Precision + Gradient Checkpointing 설정
 
 ### bf16 Mixed Precision
@@ -201,9 +242,52 @@ Qwen2.5-32B 모델(정밀도 bf16, 실제 파라미터 수 $\Phi \approx 32.5 \t
 # 8-bit AdamW로 옵티마이저 메모리 절감 구현 예시
 from bitsandbytes.optim import AdamW8bit
 
-# optimizer 정의 시 bitsandbytes의 8-bit 구현체 사용
+# optimizer 정의 시 bitsandbytes of 8-bit 구현체 사용
 optimizer = AdamW8bit(model.parameters(), lr=1e-5, weight_decay=0.01)
 ```
+
+#### 4. 2x A100 80GB 환경에서의 상세 메모리 요구량 및 CPU Offloading 분석
+
+Qwen2.5-32B 모델의 파라미터 수 $\Phi \approx 32.5\text{B}$를 2x A100 80GB ($N=2$) 환경에서 풀 파인튜닝할 때의 상세 VRAM 요구량은 다음과 같다.
+
+*   **가중치 및 그래디언트 (bf16)**:
+    *   모델 파라미터 분할: $65.0\text{ GB} / 2 = 32.5\text{ GB/GPU}$
+    *   그래디언트 분할: $65.0\text{ GB} / 2 = 32.5\text{ GB/GPU}$
+*   **옵티마이저 상태 (AdamW)**:
+    *   **Standard AdamW (fp32)**: $390.0\text{ GB} / 2 = 195.0\text{ GB/GPU}$
+    *   **8-bit AdamW**: $195.0\text{ GB} / 2 = 97.5\text{ GB/GPU}$
+*   **활성화 메모리 (FlashAttention-2 + Selective Activation Checkpointing)**:
+    *   배치 크기 $B=1$ (GPU당), 시퀀스 길이 $L=4096$ 기준: 약 $3.7\text{ GB/GPU}$
+*   **통신 버퍼 및 임시 메모리**:
+    *   AllGather / ReduceScatter 프리페치 버퍼 등 추가 오버헤드: 약 $2.0 \sim 4.0\text{ GB/GPU}$
+
+**종합 분석 (CPU Offload 없을 경우)**:
+*   Standard AdamW 사용 시 필요한 GPU당 VRAM: $32.5 + 32.5 + 195.0 + 3.7 + 3.0 \approx 266.7\text{ GB}$ (A100 80GB 용량을 대폭 초과하여 **즉시 OOM**)
+*   8-bit AdamW 사용 시 필요한 GPU당 VRAM: $32.5 + 32.5 + 97.5 + 3.7 + 3.0 \approx 169.2\text{ GB}$ (역시 80GB 용량을 초과하여 **OOM**)
+
+**해결 방안: CPU Offloading 필수 적용**:
+2x A100 80GB 환경에서 OOM 없이 학습을 완주하려면 **옵티마이저 상태 전체를 호스트 메모리(CPU RAM)로 오프로드**해야 한다.
+*   **Optimizer State CPU Offload 적용 시 VRAM 요구량**:
+    *   VRAM 점유 상태: 파라미터($32.5\text{ GB}$) + 그래디언트($32.5\text{ GB}$) + 활성화 메모리($3.7\text{ GB}$) + 통신 버퍼($3.0\text{ GB}$) $\approx 71.7\text{ GB/GPU}$
+    *   여유 VRAM: 약 $8.3\text{ GB}$ (안정적인 학습 가능 범위 내 확보)
+*   **호스트 RAM(CPU DDR5) 요구량**:
+    *   Standard AdamW 사용 시: 최소 $390\text{ GB}$ 이상의 시스템 RAM 확보 필요 (시스템 기본 운영 메모리 고려 시 512GB RAM 추천)
+    *   8-bit AdamW 사용 시: 최소 $195\text{ GB}$ 이상의 시스템 RAM 확보 필요 (256GB RAM 이상 노드에서 구동 가능)
+
+#### 5. 2x A100 80GB 환경을 위한 메모리 프로파일링 지표 (Memory Profiling Metrics)
+
+CPU Offload와 백워드 프리페치를 동시에 적용한 2x A100 80GB 극단적 환경에서는 메모리 누수와 미세한 단편화(Fragmentation)도 즉시 OOM으로 이어질 수 있다. 이를 감시하기 위한 필수 프로파일링 지표는 다음과 같다.
+
+1.  **PyTorch 메모리 지표 (코드 레벨)**:
+    *   `Allocated Memory` (`torch.cuda.memory_allocated()`): 현재 모델 상태 및 활성화 텐서가 점유 중인 실제 논리적 메모리 크기.
+    *   `Max Allocated Memory` (`torch.cuda.max_memory_allocated()`): 학습 스텝(Forward/Backward) 전체를 통틀어 가장 높았던 피크 논리 메모리. 이 수치가 72GB를 초과하면 버퍼 공간 부족으로 위험하다.
+    *   `Reserved Memory` (`torch.cuda.memory_reserved()`): PyTorch 캐싱 할당자(Caching Allocator)가 GPU로부터 대여해 확보해둔 물리 메모리 크기.
+    *   `Max Reserved Memory` (`torch.cuda.max_memory_reserved()`): 캐싱 할당자의 피크 점유량. 이 값이 80GB에 도달했으나 `Max Allocated`가 훨씬 낮다면 메모리 단편화(Fragmentation)가 심하게 발생하고 있음을 뜻한다.
+    *   `Active Bytes` / `Inactive Special Bytes` (PyTorch Profiler): `record_shapes=True`, `profile_memory=True` 옵션으로 수집하여 개별 레이어 연산(Qwen2DecoderLayer 내 Self-Attention 등)에서 VRAM 급증을 추적.
+2.  **하드웨어 및 시스템 지표 (인프라 레벨)**:
+    *   `GPU VRAM 사용량` (`nvidia-smi` FB Memory): 물리적인 VRAM 총 점유량.
+    *   `System Host Memory (RAM) 사용량`: CPU Offload된 옵티마이저 상태가 CPU 메모리를 초과하여 OS Swap을 유발하거나 Out-Of-Memory(OOM) Killer에 의해 프로세스가 강제 종료되는지 모니터링.
+    *   `PCIe Read/Write Bandwidth` (DCGM or `nvidia-smi dmon`): CPU Offload 시 매 스텝마다 가중치와 옵티마이저 상태를 주고받는 PCIe 대역폭 점유율. 통신 병목으로 인해 GPU 활용률(GPU Utilization)이 저하되는 현상을 진단하는 핵심 지표.
 
 ---
 
@@ -422,6 +506,6 @@ eval_loss가 N 평가 주기 연속 개선되지 않으면 중단:
 
 ## 미결 사항
 
-- [TODO] **FSDP와 DeepSpeed ZeRO-3 간의 2개 노드 이상 분산 환경에서의 상호 대역폭 병목 및 통신 효율 측정**: 단일 노드(GPU 8장) 대비 다중 노드로 확장 시 FSDP의 backward prefetch policy와 DeepSpeed의 overlap_comm 통신 오버헤드 차이 검증 필요.
+- [TODO] **FSDP와 DeepSpeed ZeRO-3 간의 2개 노드 이상 분산 환경에서의 상호 대역폭 병목 및 통신 효율 측정**: 단일 노드(GPU 8장) 대비 다중 노드로 확장 시, FSDP의 `BACKWARD_PRE` 프리페치에 따른 노드 간 AllGather 통신 버스트와 DeepSpeed의 `overlap_comm` 및 `stage3_prefetch_bucket_size` 조율을 통한 통신 셰이핑(Communication Shaping)의 상호 대역폭 병목 및 VRAM 할당 변화 추이 검증 필요.
 - [Ph1] **8-bit AdamW 사용 시의 가중치 정밀도 저하가 시적 novelty 및 수사적 특이성 학습에 미치는 장기적 영향 검증**: 32B 모델의 풀 파인튜닝에서 8-bit optimizer가 fp32 master weights와 8-bit gradient를 조합할 때, 미세한 가중치 업데이트 손실이 한국어 고유의 미학적 시 작법 학습에 부정적 영향을 미치는지에 대한 실험적 평가 필요.
 - [TODO] **CPU Offload 활성화 시 PCIe Gen4 대역폭 병목으로 인한 MFU(Model FLOPs Utilization) 감소율 예측 및 A100 NVLink 미탑재 환경에서의 오버헤드 완화 대책**: 4x A100 PCIe 환경에서 optimizer offload 사용 시, NVLink SXM4 대비 PCIe Gen4 대역폭 한계로 인한 학습 속도 저하(MFU 30% 이하 예상)를 극복하기 위한 커스텀 gradient accumulation tuning의 타당성.
