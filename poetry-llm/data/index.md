@@ -1,11 +1,3 @@
----
-type: Section Index
-title: 학습 데이터
-description: 시, 시론, 시평론, 보조 예술 데이터의 수집 전략 및 구성.
-tags: [data, corpus, collection]
-timestamp: 2026-06-27
----
-
 # 학습 데이터
 
 | 문서 | 내용 |

@@ -1,11 +1,3 @@
----
-type: Section Index
-title: 데이터 전처리
-description: 시 데이터의 토큰화 설계, 특수 토큰 전략, 학습 데이터 생성 방법.
-tags: [preprocessing, tokenization, training-data]
-timestamp: 2026-06-27
----
-
 # 데이터 전처리
 
 | 문서 | 내용 |
