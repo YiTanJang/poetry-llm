@@ -264,6 +264,7 @@ if __name__ == "__main__":
 | 토큰이 여러 서브워드로 분리됨 | `add_tokens` 대신 `add_special_tokens` 미사용 | `add_special_tokens({"additional_special_tokens": [...]})` 사용 |
 | 재로드 후 특수 토큰 사라짐 | tokenizer 미저장 | `tokenizer.save_pretrained(path)` 필수 |
 | lm_head 크기 부족 (weight tying 없는 경우) | head만 resize 누락 | `resize_token_embeddings` 가 두 레이어 모두 처리 |
+| 128 배수 정렬 누락 | GPU Tensor Core 최적 연산 조건 불충족으로 인한 FP16/BF16 연산 효율 저하 | `resize_token_embeddings(len(tokenizer) + padding_needed)` 형식으로 128 배수 맞춤 호출 |
 | 임베딩 초기화 후 loss 발산 | learning rate 너무 높거나 새 토큰만 warm-up 없이 학습 | 새 토큰 파라미터에 별도로 낮은 lr 적용 또는 warm-up 스텝 확보 |
 
 ---
