@@ -64,75 +64,134 @@ model.resize_token_embeddings(len(tokenizer))
 
 ---
 
-## 3. 임베딩 초기화 — 랜덤 대신 유사 토큰 복사
+## 3. 임베딩 초기화 및 Qwen2.5 토큰화 검증
 
-새 토큰은 기본적으로 랜덤 초기화됩니다. 의미적으로 유사한 기존 토큰에서
-임베딩을 복사하면 학습 초기 안정성이 높아집니다.
+새 토큰은 기본적으로 임베딩 레이어 확장 시 랜덤 임베딩으로 초기화됩니다. 이 경우 학습 초기 수렴 성능에 나쁜 영향을 줄 수 있으므로, 의미적으로 가장 유사한 기존 토큰의 임베딩을 복사하여 초기화합니다.
 
-```python
-import torch
+### 3.1. Qwen2.5 개행 문자(`\n`) 토큰화 실험 검증
 
-with torch.no_grad():
-    emb = model.get_input_embeddings()   # nn.Embedding
-    lm_head = model.get_output_embeddings()  # nn.Linear
+Qwen2.5의 Byte-level BPE 토크나이저는 줄바꿈 기호(`\n`)와 관련해 다음과 같이 작동하는 것이 실험적으로 확인되었습니다:
 
-    # 참조 토큰 ID 가져오기
-    newline_id  = tokenizer.encode("\n",  add_special_tokens=False)[0]
-    # 연갈이는 \n\n (두 줄 바꿈) 임베딩의 평균을 사용
-    newline2_id = tokenizer.encode("\n\n", add_special_tokens=False)
+1. **`\n` (단일 줄바꿈) 검증**:
+   - `tokenizer.encode("\n", add_special_tokens=False)` 결과값은 `[198]`로, 단일 토큰(ID 198)으로 원자적(Atomic)으로 토큰화됩니다.
+2. **`\n\n` (두 줄바꿈 / 연갈이) 검증**:
+   - `tokenizer.encode("\n\n", add_special_tokens=False)` 결과값은 `[198, 198]`로, Qwen2.5 어휘 사전(Vocabulary)에 별도의 `\n\n` 병합 토큰이 존재하지 않고 두 개의 `\n` 토큰으로 나뉘어 토큰화됩니다.
 
-    ref_single = emb.weight[newline_id].clone()
-    ref_double = emb.weight[newline2_id].mean(dim=0).clone()
-
-    mapping = {
-        "<행갈이>": ref_single,
-        "<연갈이>": ref_double,
-        "<시작>": ref_single,   # bos 역할; \n 에서 시작
-        "<끝>":   ref_single,   # eos 역할; 동일
-    }
-
-    for token_str, init_vec in mapping.items():
-        tid = tokenizer.convert_tokens_to_ids(token_str)
-        emb.weight[tid] = init_vec
-        # lm_head는 대부분 weight tying — 별도 복사 불필요
-        # weight tying 없는 모델이라면 아래 줄도 추가:
-        # lm_head.weight[tid] = init_vec
-
-print("임베딩 초기화 완료")
-```
-
-### Weight Tying 확인 방법
-
-```python
-tied = model.config.tie_word_embeddings  # 대부분 True
-print("weight tying:", tied)
-```
-
-`True`이면 `embed_tokens`와 `lm_head`가 같은 텐서를 공유하므로
-`emb.weight` 수정만으로 충분합니다.
+이 분석을 기반으로 다음과 같이 가중치 초기화 설계를 적용합니다:
+* **`<행갈이>` 토큰**: 단일 줄바꿈 `\n` (ID 198)의 임베딩 벡터를 그대로 복사합니다.
+* **`<연갈이>` 토큰**: 두 줄바꿈 `\n\n`에 대응하는 토큰들(`[198, 198]`)의 임베딩 벡터들의 평균값(Mean vector)을 구해 복사합니다. 비록 Qwen2.5에서는 `[198, 198]`이 동일한 ID의 반복이라 평균을 구하든 단일 임베딩을 쓰든 결과가 같지만, 토크나이저 아키텍처가 변경되거나 다른 베이스 모델(예: Llama 3 등)로 변경되어 `\n\n`이 멀티 토큰 시퀀스 또는 별개의 단일 토큰으로 인코딩되는 경우를 대비해 **평균 임베딩 복사 로직**을 일반화하여 작성합니다.
+* **`<시작>` / `<끝>` 토큰**: 시작과 끝의 경계 제어 토큰도 초기 학습 안정성을 위해 줄바꿈(`\n`)의 임베딩 벡터를 복사합니다. (BOS/EOS 역할에 준함)
 
 ---
 
-## 4. 검증
+## 4. 통합 초기화 및 검증 샘플 코드
+
+HuggingFace 환경에서 토크나이저와 모델을 동시에 로드하고, 특수 토큰 추가, 128 배수 임베딩 정렬(GPU Tensor Core 최적화), 임베딩 복사 초기화, 그리고 최종 저장까지 한 번에 수행하는 완성형 스크립트 예제입니다.
 
 ```python
-# 1) vocab 크기 일치
-assert len(tokenizer) == model.config.vocab_size or \
-       model.get_input_embeddings().weight.shape[0] == len(tokenizer), \
-       "vocab size mismatch!"
+import torch
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
-# 2) 특수 토큰이 단일 ID로 인코딩되는지 확인
-for tok in ["<시작>", "<끝>", "<행갈이>", "<연갈이>"]:
-    ids = tokenizer.encode(tok, add_special_tokens=False)
-    assert len(ids) == 1, f"{tok} → {ids}  (단일 토큰이어야 함)"
-    print(f"{tok} → id {ids[0]}")
+def initialize_poetry_model_and_tokenizer(model_id: str, save_dir: str):
+    print(f"Loading base model and tokenizer: {model_id}")
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        torch_dtype=torch.bfloat16,
+        device_map="auto"
+    )
+    
+    # 1. 특수 토큰 정의 및 추가
+    special_tokens = ["<시작>", "<끝>", "<행갈이>", "<연갈이>"]
+    num_added = tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
+    print(f"Added {num_added} special tokens to tokenizer.")
+    
+    # 2. GPU Tensor Core 성능 최적화를 위한 128 배수 정렬 및 임베딩 레이어 확장
+    original_vocab_size = len(tokenizer)
+    aligned_vocab_size = original_vocab_size
+    if aligned_vocab_size % 128 != 0:
+        aligned_vocab_size = ((aligned_vocab_size // 128) + 1) * 128
+    
+    model.resize_token_embeddings(aligned_vocab_size)
+    print(f"Resized embedding layers from {original_vocab_size} to {aligned_vocab_size} (128-aligned).")
+    
+    # 3. Qwen2.5 개행 토큰화 실험 검증 및 참조 ID 획득
+    newline_ids = tokenizer.encode("\n", add_special_tokens=False)
+    double_newline_ids = tokenizer.encode("\n\n", add_special_tokens=False)
+    
+    print(f"Experimental verification - '\\n' tokenized as: {newline_ids}")
+    print(f"Experimental verification - '\\n\\n' tokenized as: {double_newline_ids}")
+    
+    assert len(newline_ids) == 1, "Expected '\\n' to be tokenized as a single token."
+    newline_id = newline_ids[0]
+    
+    # 4. 임베딩 가중치 복사 초기화
+    with torch.no_grad():
+        emb = model.get_input_embeddings()      # Input embeddings (nn.Embedding)
+        lm_head = model.get_output_embeddings()  # Output embeddings / LM Head (nn.Linear)
+        
+        # 참조 벡터 추출 (clone)
+        ref_single = emb.weight[newline_id].clone()
+        ref_double = emb.weight[double_newline_ids].mean(dim=0).clone()
+        
+        # Output embedding도 복사를 위해 별도 추출 (weight tying이 아니거나 다른 경우 대비)
+        ref_single_out = lm_head.weight[newline_id].clone()
+        ref_double_out = lm_head.weight[double_newline_ids].mean(dim=0).clone()
+        
+        # 신규 특수 토큰과 참조 벡터 매핑
+        mapping_in = {
+            "<행갈이>": ref_single,
+            "<연갈이>": ref_double,
+            "<시작>": ref_single,
+            "<끝>": ref_single,
+        }
+        
+        mapping_out = {
+            "<행갈이>": ref_single_out,
+            "<연갈이>": ref_double_out,
+            "<시작>": ref_single_out,
+            "<끝>": ref_single_out,
+        }
+        
+        # Input Embedding 가중치 업데이트
+        for tok_str, vec in mapping_in.items():
+            tid = tokenizer.convert_tokens_to_ids(tok_str)
+            emb.weight[tid].copy_(vec)
+            
+        # Weight Tying 여부 확인 및 Output Embedding 가중치 업데이트
+        if not model.config.tie_word_embeddings:
+            print("Weight tying is disabled. Initializing LM Head embeddings separately.")
+            for tok_str, vec in mapping_out.items():
+                tid = tokenizer.convert_tokens_to_ids(tok_str)
+                lm_head.weight[tid].copy_(vec)
+        else:
+            print("Weight tying is enabled. LM Head shares weight tensor with Input Embeddings.")
+            
+    print("Embedding initialization completed successfully.")
+    
+    # 5. 검증 코드 수행
+    # 단일 토큰 변환 검증
+    for tok in special_tokens:
+        ids = tokenizer.encode(tok, add_special_tokens=False)
+        assert len(ids) == 1, f"Token {tok} was not added as a single atomic token (got {ids})."
+        
+    # 간단한 포워드 패스 검증 (Nan/Inf 발생 검사)
+    sample_text = "<시작> 가을날의 들판 <행갈이> 벼가 익어간다 <연갈이> 허수아비 하나 서 있다 <끝>"
+    inputs = tokenizer(sample_text, return_tensors="pt").to(model.device)
+    with torch.no_grad():
+        outputs = model(**inputs, labels=inputs["input_ids"])
+    print(f"Forward pass verification: loss = {outputs.loss.item():.4f}")
+    
+    # 6. 토크나이저와 모델 저장
+    tokenizer.save_pretrained(save_dir)
+    model.save_pretrained(save_dir)
+    print(f"Successfully saved initialized tokenizer and model to: {save_dir}")
 
-# 3) 간단한 생성 테스트
-sample = tokenizer("<시작> 봄이 왔다 <행갈이> 꽃이 피었다 <끝>",
-                   return_tensors="pt").to(model.device)
-with torch.no_grad():
-    out = model(**sample, labels=sample["input_ids"])
-print("loss:", out.loss.item())  # nan/inf 아니면 OK
+if __name__ == "__main__":
+    initialize_poetry_model_and_tokenizer(
+        model_id="Qwen/Qwen2.5-32B",
+        save_dir="./poetry_model_initialized"
+    )
 ```
 
 ---
@@ -150,14 +209,15 @@ print("loss:", out.loss.item())  # nan/inf 아니면 OK
 
 ---
 
-## 미결 사항
-
-- [ ] Qwen2.5 tokenizer가 `\n`을 단일 토큰으로 처리하는지 실험 확인 필요
-- [ ] `<시작>`/`<끝>`을 `bos_token`/`eos_token`으로도 등록할지 결정
-      (`tokenizer.bos_token = "<시작>"` 방식)
-- [ ] 파일럿(10.7B)에서 임베딩 복사 vs 랜덤 초기화 수렴 속도 비교 실험
-
 # Citations
 
 - HuggingFace Docs — [Adding tokens to a tokenizer](https://huggingface.co/docs/transformers/main/en/add_new_model#adding-tokens-to-the-tokenizer)
 - HuggingFace Docs — [`resize_token_embeddings`](https://huggingface.co/docs/transformers/main_classes/model#transformers.PreTrainedModel.resize_token_embeddings)
+
+---
+
+## 미결 사항
+
+- [ ] `tokenizer.bos_token = "<시작>"` 및 `tokenizer.eos_token = "<끝>"`으로 등록할 때, vLLM이나 HuggingFace pipeline 등 외부 추론 엔진과의 호환성에 부작용이 없는가?
+- [ ] 추가된 특수 토큰들의 학습 초기 경사 발산(Gradient Explosion)을 막기 위해, 이 토큰 임베딩 레이어에만 별도의 낮은 학습률(Learning Rate)을 적용하거나 Warm-up 단계를 차등 적용해야 하는가?
+- [ ] `<행갈이>`와 `<연갈이>`의 임베딩을 단순히 복사/평균하여 사용하는 것보다, 이들의 조합이 문맥에서 올바르게 수렴되도록 하기 위해 continual pretraining 코퍼스에 이 토큰들을 임의 비율로 혼합하여 사전 적응 훈련을 거쳐야 하는가?
