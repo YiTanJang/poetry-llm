@@ -3,7 +3,7 @@ type: Design
 title: 추론 구조의 창발 — 프로세스 감독 설계
 description: 8단계 처방적 추론 프레임을 폐기하고, 프로세스 감독을 통해 추론 구조가 학습에서 창발되도록 설계한다. 템플릿 준수가 아닌 트레이스 품질이 학습 신호다.
 tags: [generation, cot, process-supervision, emergent-reasoning]
-timestamp: 2026-06-27T00:00:00Z
+timestamp: 2026-06-28T00:00:00Z
 ---
 
 # 추론 구조의 창발 — 프로세스 감독 설계
@@ -137,14 +137,21 @@ o1과 DeepSeek-R1은 추론 단계를 처방받지 않았다.
 
 ### 1. 자동화된 정렬 매칭 지표 (Automated Alignment Metrics)
 
-1. **시맨틱 유사도 (Semantic Similarity)**
-   - **대상**: CoT 스크래치패드 내의 구체적 계획/설계 내용(예: "초안 계획", "지향할 정서")과 최종 출력된 시의 본문.
-   - **방법**: 한국어 임베딩 모델(예: KoSentenceBERT, KoE5)을 활용하여 CoT 계획 부문과 최종 시의 코사인 유사도(Cosine Similarity)를 측정한다.
-   - **목적**: 사고 과정의 논리적 지향점이 시의 문맥적 흐름과 일맥상통하는지 검증한다. 너무 동떨어진 엉뚱한 시가 나오는 것을 차단한다.
+1. **CoT 트레이스 충실도(Fidelity)의 자동화된 시맨틱 평가 (SBERT Semantic Similarity)**
+   - **대상**: CoT 스크래치패드 내에서 브레인스토밍된 구체적인 발상 세그먼트(개념, 은유, 정서)와 최종 출력된 시의 본문 및 개별 행/연.
+   - **방법**: 한국어 문장 임베딩 모델(예: KoSentenceBERT, KoE5)을 활용하여 CoT 세그먼트와 시 구절 간의 코사인 유사도(Cosine Similarity)를 측정한다.
+     - **개념 매칭 (Concept Matching)**: CoT의 개념 설계 세그먼트 $T_{concept}$와 시 전체의 결합 임베딩 간의 유사도를 측정하여 시의 거시적 정체성을 평가한다.
+       $$\text{SemanticSim}_{\text{concept}} = \cos(E(T_{concept}), E(Poem))$$
+     - **은유 매칭 (Metaphor Matching)**: CoT에서 계획된 개별 은유 표현 $M_k$가 시의 특정 행 $L_i$에 투영되었는지 추적하기 위해, 최댓값 풀링(Max Pooling) 유사도를 적용한다. 은유가 시의 임의의 위치에 유해했는지를 탐색한다.
+       $$\text{SemanticSim}_{\text{metaphor}} = \frac{1}{|M|} \sum_{M_k \in M} \max_{L_i \in Poem} \cos(E(M_k), E(L_i))$$
+     - **정서 매칭 (Emotion Matching)**: CoT에서 지향하고자 선언한 감정 상태나 분위기를 담은 세그먼트 $T_{emotion}$과 시의 각 연(Stanza) $S_j$ 간의 최대 유사도를 측정한다.
+       $$\text{SemanticSim}_{\text{emotion}} = \max_{S_j \in Poem} \cos(E(T_{emotion}), E(S_j))$$
+   - **목적**: 스크래치패드에서 구상한 미학적 아이디어(개념, 은유, 정서)가 최종 시에 충실하게 반영되었는지 검증하고, 사고 과정과 생성물이 서로 괴리되는 현상을 차단한다.
 
-2. **키워드 재현율 및 제약 준수도 (Keyword Recall & Constraint Satisfaction)**
-   - **긍정 재현율 (Positive Recall)**: CoT 과정에서 "이 시의 핵심 이미지로 채택하겠다"고 결정한 고유 단어/소재들이 최종 시에 실제로 포함되었는지 비율을 계산한다.
-     $$\text{Recall} = \frac{||\text{CoT 채택 키워드} \cap \text{최종 시 단어}||}{||\text{CoT 채택 키워드}||}$$
+2. **키워드 커버리지 및 재현율 (Keyword Coverage & Recall)**
+   - **긍정 재현율 (Positive Recall)**: CoT 과정에서 "이 시의 핵심 이미지로 채택하겠다"고 결정한 고유 키워드 집합 $K_{CoT}$가 실제 최종 시 단어/형태소 집합 $W_{Poem}$에 포함된 비율을 계산한다.
+     $$\text{Recall}_{\text{keyword}} = \frac{|K_{CoT} \cap W_{Poem}|}{|K_{CoT}|}$$
+   - **키워드 커버리지 (Keyword Coverage)**: 형태소 분석기(예: Mecab 등)를 활용하여 형태소(Morpheme) 단위 매칭을 수행함으로써, 한국어 조사나 어미 변화로 인한 오차를 방지하고 발상의 키워드가 시에 고루 분포하는지 측정한다.
    - **부정 제약 준수도 (Negative Constraint Adherence)**: CoT 과정에서 "상투적이므로 배제하겠다"고 선언한 금지 단어가 최종 시에 등장했는지 여부를 판별한다. 등장할 경우 감점을 부과한다.
 
 3. **구조적 준수율 (Structural Adherence)**
@@ -174,16 +181,37 @@ o1과 DeepSeek-R1은 추론 단계를 처방받지 않았다.
 import re
 from typing import Dict, List, Tuple
 
-def calculate_semantic_similarity(cot_plan: str, poem: str) -> float:
+def calculate_fidelity_semantic_similarity(cot_segments: Dict[str, str], poem: str) -> Dict[str, float]:
     """
-    Sentence-BERT 등을 활용하여 CoT 계획부와 최종 시 간의 코사인 유사도를 계산합니다.
-    (실제 구현에서는 사전 학습된 임베딩 모델의 API를 호출)
+    Sentence-BERT 등을 활용하여 CoT 내 세그먼트(개념, 은유, 정서)와 
+    최종 시(및 행, 연) 간의 세부 코사인 유사도를 계산합니다.
     """
-    # Pseudo-code embedding comparison
-    # cot_vector = embedding_model.encode(cot_plan)
+    # 1. 개념 매칭 (Concept Matching)
+    # concept_vector = embedding_model.encode(cot_segments.get("concept", ""))
     # poem_vector = embedding_model.encode(poem)
-    # return cosine_similarity(cot_vector, poem_vector)
-    return 0.85  # 예시 값 반환
+    # concept_sim = cosine_similarity(concept_vector, poem_vector)
+    
+    # 2. 은유 매칭 (Metaphor Matching - Max-pooling over poem lines)
+    # poem_lines = [line for line in poem.split('\n') if line.strip()]
+    # line_vectors = [embedding_model.encode(l) for l in poem_lines]
+    # metaphor_sims = []
+    # for metaphor in cot_segments.get("metaphors", []):
+    #     m_vector = embedding_model.encode(metaphor)
+    #     max_sim = max([cosine_similarity(m_vector, l_vec) for l_vec in line_vectors])
+    #     metaphor_sims.append(max_sim)
+    # metaphor_sim = sum(metaphor_sims) / len(metaphor_sims) if metaphor_sims else 1.0
+    
+    # 3. 정서 매칭 (Emotion Matching - Max-pooling over stanzas)
+    # stanzas = [s for s in poem.split('\n\n') if s.strip()]
+    # stanza_vectors = [embedding_model.encode(s) for s in stanzas]
+    # emotion_vector = embedding_model.encode(cot_segments.get("emotion", ""))
+    # emotion_sim = max([cosine_similarity(emotion_vector, s_vec) for s_vec in stanza_vectors]) if stanza_vectors else 1.0
+    
+    return {
+        "concept_similarity": 0.82,
+        "metaphor_similarity": 0.79,
+        "emotion_similarity": 0.85
+    }
 
 def evaluate_keyword_adherence(chosen_keywords: List[str], 
                                prohibited_keywords: List[str], 
@@ -246,14 +274,16 @@ def calculate_alignment_score(trace: Dict) -> Dict[str, float]:
     """
     CoT와 최종 시의 전체 정렬 상태를 평가하여 종합 점수를 반환합니다.
     """
-    cot_plan = trace.get("cot_plan", "")
+    cot_segments = trace.get("cot_segments", {})
     poem = trace.get("poem", "")
     chosen_keywords = trace.get("chosen_keywords", [])
     prohibited_keywords = trace.get("prohibited_keywords", [])
     expected_stanzas = trace.get("expected_stanzas", 0)
     
     # 1. 개별 지표 계산
-    semantic_sim = calculate_semantic_similarity(cot_plan, poem)
+    sim_scores = calculate_fidelity_semantic_similarity(cot_segments, poem)
+    avg_semantic_sim = sum(sim_scores.values()) / len(sim_scores) if sim_scores else 0.0
+    
     recall, neg_adherence = evaluate_keyword_adherence(chosen_keywords, prohibited_keywords, poem)
     struct_adherence = evaluate_structural_adherence(expected_stanzas, poem)
     
@@ -263,27 +293,26 @@ def calculate_alignment_score(trace: Dict) -> Dict[str, float]:
     
     # 3. 가중합 산출
     raw_score = (
-        0.4 * semantic_sim +
+        0.4 * avg_semantic_sim +
         0.3 * ((recall + neg_adherence) / 2.0) +
         0.3 * struct_adherence
     )
     
     final_score = raw_score * penalty_multiplier
     
-    return {
-        "semantic_similarity": semantic_sim,
+    result = {
         "keyword_recall": recall,
         "negative_constraint_score": neg_adherence,
         "structural_adherence": struct_adherence,
         "is_contaminated": is_contaminated,
         "final_alignment_score": final_score
     }
+    result.update(sim_scores)
+    return result
 ```
-
----
 
 ## 미결 사항
 
-- [Ph1] 자동화된 시맨틱 유사도 임계치 설정: CoT 계획과 시 본문 간의 문맥적 유사도를 Sentence-BERT로 측정할 때, 시의 은유적 특성으로 인해 발생하는 낮은 유사도 점수와 실제 의도된 이탈을 구별할 수 있는 최적의 임계치(Threshold)는 얼마인가?
+- [Ph1] 자동화된 시맨틱 유사도 임계치 설정: CoT 계획과 시 본문 간의 문맥적 유사도를 Sentence-BERT로 측정할 때, 시의 은유적 특성으로 인해 발생하는 낮은 유사도 점수와 실제 의도된 이탈을 구별할 수 있는 최적의 임계치(Threshold)는 얼마인가? 특히 개념(Concept), 은유(Metaphor), 정서(Emotion) 세그먼트별로 고유한 언어적 추상 수준이 다르므로, 각 세그먼트별로 차등 임계치를 적용해야 할 것인가에 대한 검증이 필요하다.
 - [Ph1] 부정 제약(금지어) 리스트의 다이내믹 피드백: 시인의 스타일이나 주제별로 유동적으로 바뀌어야 하는 금지어 사전을 CoT 내에서 어떻게 효율적으로 추론하고 검증 프레임워크에 인자로 전달할 것인가?
 - [Ph1] RLHF/RLAIF 파이프라인에서의 페널티 스케일링: 역할 오염이 발생했을 때 보상값을 완전 제로(0.0)화하는 강한 페널티가 PPO/DPO 등 정책 최적화 과정에서 학습 불안정성(Reward hacking or Optimization collapse)을 유발하는지 여부와 이를 완화할 부드러운 감점 스케일링 방식의 유효성은 어떠한가?
