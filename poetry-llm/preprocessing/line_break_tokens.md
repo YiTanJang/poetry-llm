@@ -3,7 +3,7 @@ type: Design
 title: 행갈이/연갈이 특수 토큰 설계 및 전처리 파이프라인
 description: 시의 형식적 핵심인 행갈이와 연갈이를 명시적으로 학습시키기 위한 전처리 및 후처리 변환 파이프라인 설계.
 tags: [preprocessing, tokenization, line-break, stanza-break, pipeline]
-timestamp: 2026-06-27T00:00:00Z
+timestamp: 2026-06-28T00:00:00Z
 ---
 
 # 행갈이/연갈이 특수 토큰 설계 및 전처리 파이프라인
@@ -25,9 +25,18 @@ timestamp: 2026-06-27T00:00:00Z
 | `<여백:N>` | Spacing Control | 연속된 N개의 공백 문자 정의 | 시인의 의도적인 타이포그래피적 여백(들여쓰기 및 넓은 공백)을 토크나이저의 왜곡 없이 정확히 보존합니다. |
 | `<끝>` | EOS (End of Sequence) | 시퀀스의 종료점 정의 | 시의 유기적 마침표를 나타냅니다. 모델이 스스로 시의 완결성을 인지하고 생성을 멈추도록 유도합니다. |
 
-### 토크나이저 통합 시 주의사항
-- 특수 토큰들은 토크나이저(Tokenizer)에 고유한 스페셜 토큰으로 추가되어 단일 ID를 부여받아야 합니다.
-- 만약 일반 텍스트로 처리되어 여러 서브워드(Subwords)로 쪼개진다면(예: `<` + `행` + `갈` + `이` + `>`), 모델이 줄바꿈의 구조적 경계를 온전히 인지하기 어렵고 불필요한 연산 낭비가 발생합니다.
+### 1.1. 토크나이저 파싱 및 스페셜 토큰 매핑 설계
+
+시 데이터의 구조적 정합성을 유지하기 위해, 특수 토큰(`<행갈이>`, `<행갈이:걸침>`, `<연갈이>`, `<시작>`, `<끝>`)은 토크나이저의 스페셜 토큰(Special Tokens)으로 명시적으로 등록되어야 합니다.
+
+1. **스페셜 토큰 사전 등록**:
+   - Hugging Face `tokenizers` 라이브러리나 Tiktoken 등에서 사용되는 모델의 어휘 사전(Vocabulary)에 특수 토큰을 `AddedToken(special=True, normalized=False)`으로 추가합니다.
+   - `normalized=False` 설정은 전처리된 텍스트 내의 특수 토큰이 유니코드 정규화 과정에서 쪼개지거나 형태가 변형되는 것을 방지합니다.
+
+2. **공백 및 개행 바이트 인코딩 매핑**:
+   - BPE(Byte-Pair Encoding) 기반 토크나이저(예: Qwen의 GPT-2 기반 Tiktoken, Llama 계열)는 공백 문자(` `)를 바이트 단위(예: `Ġ` 혹은 ` `)로 인코딩하며, 문장 내 단어와 특수 토큰이 결합될 때 불필요한 공백 토큰이 특수 토큰과 접합되어 학습되는 현상이 발생합니다.
+     - *예시*: `"하늘 <행갈이>"`가 `"하늘"` + `" Ġ<행갈이>"` 또는 `"하늘"` + `" "` + `"<행갈이>"`로 결합 인코딩되는 현상.
+   - **해결 방안**: 전처리 엔진은 토큰화 직전에 모든 시행(Line)의 끝에 존재할 수 있는 불필요한 우측 공백(trailing whitespace)을 완전히 제거(`rstrip`)한 후, 공백 없이 특수 토큰과 붙여서 인코딩 스트림을 구성합니다. (예: `하늘<행갈이>`로 밀착 배치하여, `"하늘"` 단독 토큰과 `"<행갈이>"` 특수 토큰 ID가 명확히 분리되도록 유도)
 
 ---
 
@@ -207,7 +216,26 @@ class PoetryPreprocessor:
 
 ## 4. 후처리 및 디코딩 파이프라인 (Post-processing Decoding Pipeline)
 
-모델이 생성해낸 특수 토큰 포함 텍스트를 사용자가 읽을 수 있는 일반적인 시 형태(줄바꿈 및 빈 줄 반영)로 역변환합니다. 토크나이저 디코딩 시 토큰 앞뒤로 예기치 않게 추가된 공백(예: `단어 <행갈이>` 또는 `<행갈이> 단어`)을 정밀하게 보정하는 정규식 필터링을 포함합니다.
+모델이 생성해낸 특수 토큰 포함 텍스트를 사용자가 읽을 수 있는 일반적인 시 형태(줄바꿈 및 빈 줄 반영)로 역변환합니다.
+
+### 4.1. 디코더 공백 정밀 제어 메커니즘
+토크나이저가 특수 토큰 앞뒤로 예기치 않게 생성하는 공백(예: BPE 디코딩 시 자동 삽입되는 선행 공백이나 문자열 결합 오류로 발생하는 불필요한 공백)은 시의 원본 형태를 심각하게 왜곡합니다. 이를 방지하기 위해 후처리 디코더는 아래와 같은 다단계 정제 과정을 거칩니다.
+
+1. **특수 토큰 주변의 공백 제거 (Tokenizer Whitespace Stripping)**:
+   - 디코딩 직후, 개행 관련 특수 토큰(`<행갈이>`, `<행갈이:걸침>`, `<연갈이>`)의 앞뒤에 인접한 임의의 공백 문자(`\s*`)를 정규식을 통해 완전히 지워내어 토큰 경계를 깨끗하게 정리합니다.
+   - *정규식 규칙*: `\s*<행갈이>\s*` $\rightarrow$ `<행갈이>`
+
+2. **개행 치환 및 시행 단위 분할 (Split and Line-level Processing)**:
+   - 특수 토큰을 실제 개행 문자로 변환하기 전, 먼저 각 시행의 좌우 공백 처리를 안전하게 분리해야 합니다.
+   - `<행갈이>` 및 `<행갈이:걸침>`을 `\n`으로, `<연갈이>`를 `\n\n`으로 치환한 후, 전체 텍스트를 라인 단위로 분할(`split('\n')`)합니다.
+
+3. **선행/후행 공백 제거와 의도적 여백 보호 (Preserving Spacing Control)**:
+   - 각 시행에서 시인의 의도적인 들여쓰기인 `<여백:N>` 토큰을 제외한 일반 공백들은 시행 끝(trailing)이나 맨 앞(leading)에 존재할 경우 무조건 제거(`strip`)되어야 합니다.
+   - **안전한 처리 순서**:
+     1. 시행 끝의 불필요한 공백 제거: `line.rstrip()`을 수행하여 행 끝의 잔여 공백을 청소합니다.
+     2. 시행 앞의 경우, `<여백:N>`이 있는지 먼저 확인하고, 있는 경우 해당 여백은 유지하되 없는 경우에만 `lstrip()`을 적용하여 불필요한 공백이 생기지 않도록 제어합니다.
+     3. 마지막으로 `<여백:N>` 토큰을 실제 공백 문자 N개(`' ' * N`)로 치환합니다.
+   - 이 정밀 제어 순서를 통해, 시인의 의도적 여백은 완벽히 복원되고 시스템이 자동 삽입한 무작위 공백만 엄격하게 여과됩니다.
 
 ### 파이썬 후처리 구현 코드
 
@@ -241,21 +269,32 @@ class PoetryPostprocessor:
         token_text = re.sub(r'\s*' + re.escape(self.enjamb_token) + r'\s*', self.enjamb_token, token_text)
         token_text = re.sub(r'\s*' + re.escape(self.stanza_token) + r'\s*', self.stanza_token, token_text)
         
-        # 4. 여백 복원: <여백:N> -> N개의 스페이스
-        # 토크나이저 공백 정제 이후 안전하게 복원
-        token_text = re.sub(r'<여백:(\d+)>', lambda m: ' ' * int(m.group(1)), token_text)
-        
-        # 5. 특수 토큰을 표준 개행 및 빈 줄로 치환
-        # <행갈이> -> \n
-        # <행갈이:걸침> -> \n
-        # <연갈이> -> \n\n
-        decoded_text = token_text.replace(self.line_token, "\n") \
+        # 4. 특수 토큰을 임시 표준 개행 및 빈 줄로 치환
+        temp_decoded = token_text.replace(self.line_token, "\n") \
                                  .replace(self.enjamb_token, "\n") \
                                  .replace(self.stanza_token, "\n\n")
         
-        # 6. 최종 문자열의 좌우 불필요한 여백 및 개행 제거
+        # 5. 시행 단위로 분할하여 개별 시행의 불필요한 선행/후행 공백(leading/trailing) 제거
+        # 단, <여백:N> 토큰이 시행 처음에 있는 경우는 시인의 의도적 들여쓰기이므로 lstrip을 적용하지 않음
+        lines = temp_decoded.split("\n")
+        cleaned_lines = []
+        for line in lines:
+            line_stripped_right = line.rstrip()
+            # 시행이 <여백:N>으로 시작하지 않는 경우에만 lstrip 적용
+            if line_stripped_right.startswith("<여백:"):
+                cleaned_lines.append(line_stripped_right)
+            else:
+                cleaned_lines.append(line_stripped_right.lstrip())
+                
+        decoded_text = "\n".join(cleaned_lines)
+        
+        # 6. 의도적 여백 복원: <여백:N> -> N개의 스페이스
+        decoded_text = re.sub(r'<여백:(\d+)>', lambda m: ' ' * int(m.group(1)), decoded_text)
+        
+        # 7. 최종 문자열의 좌우 불필요한 여백 및 개행 제거
         return decoded_text.strip()
 ```
+
 
 ---
 
