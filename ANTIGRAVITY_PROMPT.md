@@ -13,7 +13,7 @@ You are working on a Korean poetry LLM research wiki at D:\Documents\HomeLab\OKF
 2. Read poetry-llm/index.md
 3. Read every section's index.md to get a full picture of what exists
 
-Project goal: fine-tune Qwen2.5-32B (full fine-tuning, 2×A100 80GB) to generate aesthetically novel Korean contemporary poetry. Wiki uses OKF format — every .md file needs YAML frontmatter: type, title, description, tags, timestamp.
+Project goal: fine-tune a 20~40B model (full fine-tuning, 2×A100 80GB) to generate aesthetically novel Korean contemporary poetry. Base model is not yet decided — current leading candidates are Gemma 4 27B/31B and Qwen2.5-32B. See `poetry-llm/model/model_selection.md`. Wiki uses OKF format — every .md file needs YAML frontmatter: type, title, description, tags, timestamp.
 
 ---
 
@@ -102,6 +102,18 @@ End every file with:
 - <genuine open question 2>
 - <genuine open question 3>
 ```
+
+**문서 편집 상태 마커:**
+
+섹션 레벨 — 섹션 첫 줄에 blockquote로 표시:
+- `> 탐색중` — 열린 목록. 항목 추가 가능, 기존 항목 삭제 금지.
+- 마커 없음 — 확정된 사항. 변경 금지.
+
+`## 미결 사항` 항목 앞 태그:
+- `[Ph1]` — Phase 1 완료 후에야 결정 가능. 지금 채우지 마라.
+- `[Ph2]` — Phase 2 완료 후에야 결정 가능.
+- `[TODO]` — 지금 바로 조사/작성 가능한 작업.
+- (태그 없음) — 미결이지만 시점 불명확.
 
 ### index.md update rules
 
