@@ -3,7 +3,7 @@ type: Design
 title: 특수 토큰 추가 방법
 description: 행갈이/연갈이 특수 토큰을 HuggingFace 토크나이저와 모델에 추가하는 구체적 절차.
 tags: [model, tokenizer, special-tokens]
-timestamp: 2026-06-27T00:00:00Z
+timestamp: 2026-06-28T00:00:00Z
 ---
 
 # 특수 토큰 추가 방법
@@ -41,9 +41,16 @@ tokenizer.save_pretrained("./tokenizer_with_special")
 
 ---
 
-## 2. 모델 임베딩 확장
+## 2. 모델 임베딩 확장 및 어휘 사전 경계 정렬 프로토콜 (Vocabulary Boundary Alignment)
 
-토크나이저 vocab이 늘어났으므로 반드시 `resize_token_embeddings`를 호출해야 합니다.
+토크나이저에 특수 토큰이 추가되어 vocab 크기가 변경되면, 모델의 입력 임베딩(Embedding) 및 출력 임베딩(LM Head) 레이어 크기를 이에 맞게 조정해야 합니다. 이를 위해 HuggingFace의 `resize_token_embeddings`를 호출합니다.
+
+### 2.1. 128 배수 정렬 프로토콜 (128-Alignment Protocol)
+
+Nvidia Ampere/Hopper 등 현대 GPU의 Tensor Core는 행렬 곱 연산 시 차원 크기가 128의 배수로 정렬되어 있을 때 메모리 액세스 효율이 극대화되고 연산 처리 속도가 최적화됩니다. 
+
+- **정렬 원리**: 토크나이저 어휘 사전 크기 `len(tokenizer)`가 128의 배수가 아닐 경우, 부족한 크기만큼 패딩(Padding) 토큰을 가상으로 추가하여 어휘 사전 차원을 128의 배수로 강제 정렬합니다.
+- **적용 방법**: `padding_needed = (128 - (len(tokenizer) % 128)) % 128` 계산을 통해 필요한 패딩 크기를 산출한 후, `model.resize_token_embeddings(len(tokenizer) + padding_needed)`를 호출하여 GPU 정렬 및 최적의 Tensor Core 성능을 보장합니다.
 
 ```python
 from transformers import AutoModelForCausalLM
@@ -54,21 +61,37 @@ model = AutoModelForCausalLM.from_pretrained(
     device_map="auto",
 )
 
-# vocab 크기를 토크나이저에 맞게 확장
-model.resize_token_embeddings(len(tokenizer))
+# 128 배수 정렬 크기 계산 및 확장
+vocab_size = len(tokenizer)
+padding_needed = (128 - (vocab_size % 128)) % 128
+aligned_vocab_size = vocab_size + padding_needed
+
+model.resize_token_embeddings(aligned_vocab_size)
+print(f"Vocab size aligned to multiple of 128: {aligned_vocab_size} (padded +{padding_needed})")
 ```
 
 > [!CAUTION]
-> `resize_token_embeddings` 호출을 빠뜨리면 `lm_head`와 `embed_tokens`의
-> shape이 vocab 크기와 맞지 않아 **런타임 에러 또는 잘못된 logit**이 발생합니다.
+> `resize_token_embeddings` 호출을 누락하거나 패딩 없이 `len(tokenizer)` 그대로 확장할 경우:
+> 1. `lm_head`와 `embed_tokens` 크기가 불일치하여 런타임 Shape 에러가 발생합니다.
+> 2. GPU Tensor Core 최적화 조건(128 배수 정렬)을 충족하지 못해, 대규모 분산 학습이나 FP16/BF16 정밀도 연산 시 Matrix Multiplication 성능 저하가 발생할 수 있습니다.
 
 ---
 
-## 3. 임베딩 초기화 및 Qwen2.5 토큰화 검증
+## 3. 임베딩 할당 규칙 및 Qwen2.5 토큰화 검증
 
-새 토큰은 기본적으로 임베딩 레이어 확장 시 랜덤 임베딩으로 초기화됩니다. 이 경우 학습 초기 수렴 성능에 나쁜 영향을 줄 수 있으므로, 의미적으로 가장 유사한 기존 토큰의 임베딩을 복사하여 초기화합니다.
+새로운 특수 토큰이 추가되면 모델의 임베딩 레이어 가중치 테이블에 새로 할당된 인덱스들은 기본적으로 무작위(Random Noise)로 초기화됩니다. 이는 학습 초기에 모델이 이 토큰들을 만났을 때 그래디언트의 요동(Gradient Instability)을 유발하거나 수렴 속도를 현저히 늦추는 원인이 됩니다. 따라서 의미적으로 깊게 연관된 기존 토큰(Semantically-related existing tokens)의 임베딩 벡터를 복사 및 평균화하여 초기화하는 할당 프로토콜을 적용합니다.
 
-### 3.1. Qwen2.5 개행 문자(`\n`) 토큰화 실험 검증
+### 3.1. 평균 임베딩 할당 규칙 (Average Embedding Assignment Rules)
+
+1. **무작위 초기화 지양**: 무작위 가중치는 사전 학습된 의미 공간(Embedding Space Manifold)의 기하학적 분포와 완전히 어긋나 있으므로, 기존 학습 완료된 안정적인 벡터들의 대표값을 활용합니다.
+2. **단일 의미 토큰 매핑**: 새 토큰이 기존 단일 토큰의 기능과 완전히 일치할 때, 해당 기존 토큰의 가중치를 복사(Clone)하여 할당합니다.
+   - `<행갈이>` $\rightarrow$ `\n` (ID 198)
+   - `<시작>`, `<끝>` $\rightarrow$ `\n` (BOS/EOS 역할의 학습 안전성을 위해 줄바꿈 임베딩 활용)
+3. **복합/평균 의미 토큰 매핑**: 새 토큰이 기존의 특정 토큰 시퀀스(예: 연 구분 빈 줄 `\n\n`)에 대응될 경우, 해당 시퀀스를 이루는 개별 토큰 임베딩들의 **산술 평균(Mean Vector)**을 구하여 주입합니다.
+   - `<연갈이>` $\rightarrow$ `\n\n` (토큰화 결과인 `[198, 198]` 복수 토큰의 임베딩 벡터 평균)
+   - 향후 다중 토큰 의미 매핑 시에도 동일하게 평균 임베딩 복사 로직을 일반화하여 적용합니다.
+
+### 3.2. Qwen2.5 개행 문자(`\n`) 토큰화 실험 검증
 
 Qwen2.5의 Byte-level BPE 토크나이저는 줄바꿈 기호(`\n`)와 관련해 다음과 같이 작동하는 것이 실험적으로 확인되었습니다:
 
@@ -81,6 +104,42 @@ Qwen2.5의 Byte-level BPE 토크나이저는 줄바꿈 기호(`\n`)와 관련해
 * **`<행갈이>` 토큰**: 단일 줄바꿈 `\n` (ID 198)의 임베딩 벡터를 그대로 복사합니다.
 * **`<연갈이>` 토큰**: 두 줄바꿈 `\n\n`에 대응하는 토큰들(`[198, 198]`)의 임베딩 벡터들의 평균값(Mean vector)을 구해 복사합니다. 비록 Qwen2.5에서는 `[198, 198]`이 동일한 ID의 반복이라 평균을 구하든 단일 임베딩을 쓰든 결과가 같지만, 토크나이저 아키텍처가 변경되거나 다른 베이스 모델(예: Llama 3 등)로 변경되어 `\n\n`이 멀티 토큰 시퀀스 또는 별개의 단일 토큰으로 인코딩되는 경우를 대비해 **평균 임베딩 복사 로직**을 일반화하여 작성합니다.
 * **`<시작>` / `<끝>` 토큰**: 시작과 끝의 경계 제어 토큰도 초기 학습 안정성을 위해 줄바꿈(`\n`)의 임베딩 벡터를 복사합니다. (BOS/EOS 역할에 준함)
+
+### 3.3. 파이썬 기반 평균 임베딩 초기화 메커니즘 (Initialization Logic)
+
+의미적으로 연관된 토큰 리스트의 ID로부터 임베딩 행렬 내 가중치를 추출하고, PyTorch를 이용하여 복사 및 평균 연산을 진행하는 흐름은 다음과 같습니다. 무작위 노이즈를 배제하고 안정적인 초깃값을 생성하기 위해 반드시 `torch.no_grad()` 블록 내에서 인플레이스(In-place) 복사 연산인 `copy_()`를 사용합니다.
+
+```python
+import torch
+
+# 1. 대상 토크나이저 내 참조 대상 토큰 시퀀스 인코딩
+target_sequence = "\n\n"
+referenced_ids = tokenizer.encode(target_sequence, add_special_tokens=False)
+
+# 2. 모델의 입력(Embeddings) 및 출력(LM Head) 임베딩 레이어 확보
+input_embeddings = model.get_input_embeddings()
+output_embeddings = model.get_output_embeddings()
+
+with torch.no_grad():
+    # 3. 참조 토큰 ID 시퀀스에 해당하는 기존 임베딩 벡터들을 추출하여 평균(Mean) 계산
+    # referenced_ids에 대응하는 임베딩 벡터 텐서 크기: [len(referenced_ids), hidden_size]
+    referenced_vectors = input_embeddings.weight[referenced_ids]
+    
+    # 세로(dim=0) 축을 기준으로 평균 벡터를 산출하여 1D 텐서 [hidden_size] 생성
+    mean_embedding_vector = referenced_vectors.mean(dim=0)
+    
+    # 4. 새로 추가된 특수 토큰의 ID 획득
+    new_token_id = tokenizer.convert_tokens_to_ids("<연갈이>")
+    
+    # 5. 복제한 평균 벡터를 새 특수 토큰 인덱스 위치에 복사 (In-place copy)
+    input_embeddings.weight[new_token_id].copy_(mean_embedding_vector)
+    
+    # Weight Tying이 비활성화된 경우 출력(LM Head) 임베딩 테이블도 동일하게 평균 연산 후 복사
+    if not model.config.tie_word_embeddings:
+        referenced_out_vectors = output_embeddings.weight[referenced_ids]
+        mean_out_vector = referenced_out_vectors.mean(dim=0)
+        output_embeddings.weight[new_token_id].copy_(mean_out_vector)
+```
 
 ---
 
