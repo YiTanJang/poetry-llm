@@ -234,11 +234,47 @@ DPO 이후 생성 샘플을 평가 파이프라인([evaluation_pipeline.md](eval
 - 선호 쌍의 margin이 너무 작은지 확인 (score_chosen - score_rejected < 0.2이면 weak pair)
 - 심사 모델 변경 또는 리워드 모델 재보정 검토
 
+### SFT 단계 일반 데이터 믹스 (Catastrophic Forgetting 2차 방어)
+
+CPT Replay Buffer가 1차 방어라면, SFT 단계에서 일반 instruction 데이터를 혼합하는 것이 2차 방어다. CPT와 달리 SFT는 instruction-output 쌍 형태의 데이터를 수용할 수 있다.
+
+```
+SFT 데이터 구성 (총량 기준)
+─────────────────────────────────
+시 특화 데이터 (포맷 3,4,7 등)    80~90%
+일반 instruction replay             10~20%
+─────────────────────────────────
+```
+
+일반 instruction replay 후보 데이터셋:
+
+| 데이터셋 | 출처 | 특징 |
+|----------|------|------|
+| **Tulu 3 SFT Mixture** | AI2 / HuggingFace | 다양한 소스 큐레이션, 라이선스 명확 |
+| **OpenHermes-2.5** | HuggingFace | 합성 instruction 데이터, 품질 높음 |
+| **KoAlpaca** | GitHub | 한국어 instruction following, 규모 소형 |
+
+> 주의: CPT Replay Buffer는 **원시 텍스트만** 허용. instruction-output 쌍은 반드시 SFT 단계에서 혼합할 것.
+
+---
+
 ### 미래 방향: PRM (Process Reward Model)
 
 DPO가 최종 시 텍스트에 대한 선호를 정렬하는 데 반해, **PRM(Process Reward Model)**은 창작 과정(CoT, 반복 수정 각 단계)에 중간 보상을 부여한다.
 
 > 가설: PRM은 단순 DPO보다 창작 과정 자체의 질을 높이는 데 효과적일 것이다. 그러나 시의 창작 과정에 대한 step-level 레이블링이 필요하며, 이는 인간 전문가 개입 비용이 높다. M3 이후 Phase 1에서 탐색한다.
+
+### 미래 방향: On-Policy Self-Distillation
+
+현재 DPO는 외부 judge(GPT-4o/Claude)에 의존하는 **off-policy** 방식에 가깝다. On-policy self-distillation은 모델 자신이 데이터 생성과 판정에 모두 참여하는 방식이다.
+
+| 방법 | 핵심 아이디어 | 우리 적용 시 고려점 |
+|------|-------------|-------------------|
+| **SPIN** (Self-Play FT) | 현재 모델 출력 → rejected, 레퍼런스 → chosen | SFT 데이터가 레퍼런스 역할 |
+| **Self-Rewarding LM** | 모델이 스스로 judge 역할 | 외부 judge 미학 편향 문제 완화 가능 |
+| **On-Policy DPO** | 현재 학습 중인 모델로 실시간 쌍 생성 | 학습 루프 복잡도 증가 |
+
+> 가설: 시 도메인에서 외부 judge(GPT-4o)의 미학 편향 문제를 줄이는 방향으로 Self-Rewarding 방식이 유효할 수 있다. 단, 자기 선호 편향(self-preference bias) 관리가 선행 과제. Phase 2 이후 탐색.
 
 ---
 
@@ -305,4 +341,6 @@ if __name__ == "__main__":
 
 - [Ph2] **DPO β 값 및 SFT 체크포인트 선정 최적화**: DPO 학습을 개시할 SFT 체크포인트를 어느 커리큘럼 단계(Stage 3 또는 Stage 4)의 어느 에포크 시점으로 고정하는 것이 DPO 선호 정렬 학습의 수렴 속도 및 최종 생성 품질(Novelty) 측면에서 가장 유리한가?
 - [Ph1] **CoT Loss Masking 비율에 따른 시상 일치율-창작자유도 트레이드오프**: SFT Stage 3에서 CoT(창작 노트) 영역의 Loss 가중치(0.0 vs 0.5 vs 1.0)를 다르게 할 때, 학습된 모델의 시상 일치율(창작 노트의 의도를 따르는 정도)과 시 창작의 독창성(Novelty) 및 자유도 간의 정량적 트레이드오프는 어떻게 나타나는가?
+- [Ph1] **SFT 단계 일반 instruction 데이터 혼합 비율**: 10% vs 20% 혼합 시 일반 언어 능력 보존 효과와 시 생성 품질 저하 간 트레이드오프. Tulu 3 vs KoAlpaca 중 한국어 instruction following 보존에 더 효과적인 소스는?
+- [Ph2] **On-Policy Self-Distillation 도입 가능성**: SPIN 또는 Self-Rewarding LM 방식을 시 도메인에 적용 시, 외부 judge 의존 DPO 대비 생성 novelty 및 미학적 선호도 점수 변화. 자기 선호 편향 관리 방안 포함.
 - [TODO] **다국어 시 데이터의 어휘사전 확장과 토큰 파편화 방지**: 외국어 시 번역 및 학습 시, 한국어와 외국어 토큰 파편화(fragmentation)를 최소화하면서 시적 운율과 뉘앙스를 보존할 수 있는 최적의 Vocabulary 크기 및 추가 토큰 확장 기법은 무엇인가?

@@ -18,7 +18,7 @@ timestamp: 2026-06-27T00:00:00Z
 | 상태 | 질문 수 | 질문 번호 |
 |------|---------|-----------|
 | 부분 답변 확보 (연구 근거 생김) | 4 | Q1, Q6, Q8, Q11 |
-| 여전히 미답 (탐색 필요) | 19 | Q2, Q3, Q4, Q5, Q7, Q9, Q10, Q14–Q25 |
+| 여전히 미답 (탐색 필요) | 20 | Q2, Q3, Q4, Q5, Q7, Q9, Q10, Q14–Q25, Q28 |
 | 철학적 질문 (답 없음, 방향 정리) | 2 | Q12, Q13 |
 
 ---
@@ -262,6 +262,20 @@ timestamp: 2026-06-27T00:00:00Z
 
 ---
 
+### Q28. On-Policy Self-Distillation이 외부 judge DPO보다 시 도메인에서 유효한가?
+- **상태**: 🔴 미답 — 설계 필요
+- **프로젝트 단계**: Phase 2 — CPT → SFT → DPO 파인튜닝
+- **우선순위**: ★★★★☆
+- **배경**: 현재 DPO는 GPT-4o/Claude 같은 외부 judge가 (chosen, rejected) 판정을 내리는 off-policy 방식이다. 이 외부 judge는 한국 현대시 미학 기준에 편향이 있을 수 있고, 도메인 특화 선호도를 내재화하지 못한다.
+- **On-policy 대안들**:
+  - **SPIN (Self-Play Fine-Tuning)**: 현재 모델의 출력을 rejected로, SFT 레퍼런스를 chosen으로 삼아 자기 개선
+  - **Self-Rewarding Language Models**: 모델 스스로 judge — 외부 의존도 제거
+  - **On-Policy DPO**: 현재 학습 중인 모델로 실시간 쌍 생성
+- **질문**: 외부 judge의 미학 편향을 줄이고 도메인 선호도를 내재화하는 데 on-policy self-distillation이 더 효과적인가? 자기 선호 편향(self-preference bias)은 어떻게 제어할 것인가?
+- **관련 문서**: [finetuning_strategy.md](../model/finetuning_strategy.md), [llm_as_judge.md](../evaluation/llm_as_judge.md)
+
+---
+
 ## 프로젝트 단계별 질문 매핑
 
 ```
@@ -288,6 +302,7 @@ Phase 2 — CPT → SFT → DPO 파인튜닝
   Q24 Few-shot ICL vs Fine-tuning
   Q25 양자화 후 창작 능력 평가
   Q27 Temperature × 페르소나 조합 최적화
+  Q28 On-Policy Self-Distillation vs 외부 judge DPO
 
 Phase 3 — 생성 및 평가 파이프라인 구축 (수정 에이전트, 평가 지표 및 인간 평가)
   Q7  반복 수정 횟수 최적값
