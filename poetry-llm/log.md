@@ -27,4 +27,8 @@ timestamp: 2026-06-26T00:00:00Z
 - `poetry-llm/model/finetuning_strategy.md` 수정: 배치 사이즈(Effective 16~64, GPU-accumulation 설정), warmup ratio(0.03), token budget(50M~200M), 커리큘럼 단계별 토큰량 상세 추정(총 120M), 조기 종료 기준(early_stopping_patience=3) 및 특수 토큰 임베딩 평균/클론 초기화용 파이썬 스크립트 작성, 미결 사항 갱신.
 - `poetry-llm/model/index.md` 수정: `continual_pretraining.md` 및 `training_infrastructure.md` 문서 등록.
 - `poetry-llm/preprocessing/training_data_formats.md` 수정: 8가지 학습 데이터 생성 포맷에 대한 개요 및 학습 목적, 표준 JSON 스키마, 특수 토큰과 발음 정보 레이어가 내재된 상세한 한국어 시 예시 추가 및 신규 미결 사항 정리.
+- `poetry-llm/evaluation/aesthetic_quality.md` 수정: ABS(Aesthetic Balance Score) 가중치 매트릭스 도입으로 전문가/일반 독자 편향 해소, '좋은 새로움'과 '나쁜 새로움'을 구별하기 위한 3단계 필터링 파이프라인 구축 및 Mermaid 다이어그램 추가, 6대 미학 기준별 1-5점 상세 루브릭 및 한국어 대비 예시 보강.
+- `poetry-llm/model/model_selection.md` 수정: Qwen2.5-32B vs EXAONE-3.5-32B 비교 심층 분석(토크나이저 효율, VRAM 임베딩 크기, 라이선스, 특수 토큰 확장성 및 다국어 전이 능력), DeepSpeed ZeRO-3 설정 파일 및 모델 가중치 초기화 스크립트 작성, Phase 2 인프라 비용 추정 테이블 추가.
+- `poetry-llm/preprocessing/pronunciation.md` 수정: 한국어 표준 발음법 및 선택적 자소-음소 정렬 하이브리드 발음 표기 전략 확정, Kiwi와 g2pK 기반 전처리 파이프라인 Mermaid 다이어그램 구축, 영어/일본어 다국어 처리 명세화, 인라인 특수 XML 유사 태그 방식 채택 및 컨텍스트 윈도우 오버헤드 분석.
+
 
