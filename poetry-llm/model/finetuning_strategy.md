@@ -3,7 +3,7 @@ type: Design
 title: 파인튜닝 전략
 description: 전체 학습 파이프라인 — CPT(도메인 적응) → SFT(창작 노트+시 포맷) → DPO(3 페르소나 심사 기반 선호 정렬). 풀 파인튜닝 vs LoRA 결정 근거, 하이퍼파라미터 전략 포함.
 tags: [model, fine-tuning, full-finetuning, lora, training, dpo, cpt, sft]
-timestamp: 2026-06-27T00:00:00Z
+timestamp: 2026-06-28T00:00:00Z
 ---
 
 # 파인튜닝 전략
@@ -106,11 +106,26 @@ Stage 5 — 수정/반복 (수정 과정 데이터): 10M tokens
 | Max seq length | 4096 | CoT + 시 초안 + 비평 및 반복 수정 텍스트 전체 포함 |
 | Early stopping | patience = 3 | 각 Stage별 eval loss 기준 조기 종료 |
 
-### LR 스케줄러 및 옵티마이저 리셋(Optimizer Resets) 전략
+### 커리큘럼 단계별 학습률 감쇠 및 체크포인트 저장 전략 (LR Decay & Checkpoint Saving Strategy)
 
-- **Warm Restart 학습률 스케줄러**: 각 커리큘럼 Stage 전환 시 학습률을 이전 단계의 최종 값에서 이어받지 않고, 새로운 Stage의 피크 학습률로 재시작(Warm Restart)한다. 이때 5%의 Warmup Ratio를 두어 급격한 손실 함수 변화에 따른 모델 가중치 왜곡을 방지한다. 최소 학습률은 $1 \times 10^{-6}$으로 고정하여 학습의 조기 정체를 막는다.
-- **옵티마이저 상태 리셋**: Curriculum Stage가 바뀔 때마다 AdamW 옵티마이저의 모멘텀 및 배리언스 상태 값을 **완전히 초기화(Reset)**한다.
-  - *도입 근거*: Stage 간 데이터의 분포와 학습 목표(형식 학습 $\rightarrow$ 평론 매핑 $\rightarrow$ CoT 추론 $\rightarrow$ 자기 비평 수정)가 서로 상이하다. 이전 Stage에서 누적된 모멘텀 정보가 유지되면 새로운 Stage 학습 초기에 잘못된 업데이트 방향으로 관성이 작용해 파라미터가 왜곡되거나 학습 수렴이 극도로 지연된다. 따라서 Stage 전환 시 모델 가중치만 유지한 채 옵티마이저 객체를 새로 인스턴스화한다.
+#### 1. 학습률 감쇠 프로필 (Learning Rate Decay Profiles)
+- **코사인 어닐링 및 웜 리스타트 (Cosine Annealing with Warm Restarts)**:
+  - 각 커리큘럼 Stage가 시작될 때마다 학습률은 해당 Stage의 피크 학습률(Stage 1: $1 \times 10^{-5}$, Stage 2: $8 \times 10^{-6}$, Stage 3: $5 \times 10^{-6}$, Stage 4: $3 \times 10^{-6}$)을 향해 선형적으로 상승하는 웜업(Warmup Ratio 5%) 구간을 거친 후, 코사인 함수 곡선을 따라 감쇠한다.
+  - 각 Stage의 최종 시점에는 최소 학습률($1 \times 10^{-6}$)에 도달하여 가중치 업데이트가 안정화되도록 설계한다.
+  - 이 웜 리스타트 전략을 통해 이전 Stage에서 수렴되었던 매개변수가 급격히 변동하지 않도록 방어하는 동시에, 새로운 Stage의 특화 데이터 분포에 대해 매끄러운 최적화 경로를 재탐색할 수 있게 유도한다.
+
+#### 2. 옵티마이저 상태 리셋 (Optimizer Resets)
+- **리셋 방식**: Curriculum Stage가 전환되는 경계면에서 AdamW 옵티마이저의 모멘텀(Momentum) 및 배리언스(Variance) 상태 값을 완전히 초기화(Reset)한다.
+- **도입 근거**: 각 커리큘럼 Stage의 데이터 분포와 학습 목표(기본 형식 $\rightarrow$ 시론 정렬 $\rightarrow$ CoT 추론 $\rightarrow$ 자기 비평 수정)는 성격이 크게 다르다. 이전 Stage에서 축적된 모멘텀 정보가 신규 Stage 초기에 유지될 경우, 잘못된 업데이트 방향으로 관성이 작용하여 수렴 지연 및 파라미터 왜곡이 유발될 수 있다. 따라서 Stage 전환 시에는 가중치만 승계하고 옵티마이저는 새로 인스턴스화한다.
+
+#### 3. 체크포인트 저장 주기 및 선택 기준 (Checkpoint Saving Frequencies & Criteria)
+- **구조 중심 단계 (Stage 1 & Stage 2) 저장 전략**:
+  - **저장 빈도**: 형식 학습 및 메타 매핑 단계에서는 형식 규칙의 빠른 수득과 과적합 제어가 핵심이므로, 비교적 잦은 주기(예: 매 200~400 steps 단위 또는 0.2 Epoch 마다)로 세밀하게 중간 체크포인트를 저장한다.
+  - **저장/선택 기준 (Structural Metric)**: 주로 검증 손실(Validation Loss) 및 구조적 평가지표(특수 토큰 `<행갈이>`, `<연갈이>`의 규칙적 위치 예측 F1-Score)에 기반한다. 형식 왜곡이나 파괴가 발생하기 직전, 형식 규칙 준수율이 극되화되는 시점의 체크포인트를 최종적으로 보존한다.
+- **미학/인지 중심 단계 (Stage 3 & Stage 4) 저장 전략**:
+  - **저장 빈도**: 고차원적 시상 전개와 비평 교정을 다루는 단계로 손실 함수의 수렴이 완만하므로, 비교적 긴 주기(예: 매 500~1000 steps 단위 또는 0.5 Epoch 마다)로 저장 빈도를 완화한다.
+  - **저장/선택 기준 (Aesthetic Reward Score)**: 단순히 텍스트 예측의 validation loss에만 의존하지 않고, **미학적 리워드 모델(Aesthetic Reward Model)**의 평가 점수와 창작 노트(CoT)-최종 시 간의 미학적 일관성 점수를 모니터링한다. Validation loss가 낮아지더라도 미학적 novelty나 시의 음악성이 감소하는 체크포인트는 배제하고, 리워드 모델 기준의 미학적 완성도 점수가 정점을 찍는 최적의 밸런스 체크포인트를 선별하여 보존한다.
+
 
 ### SFT 커리큘럼 학습 (Stage 1~4)
 
