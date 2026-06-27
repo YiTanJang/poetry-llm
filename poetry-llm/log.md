@@ -38,6 +38,12 @@ timestamp: 2026-06-26T00:00:00Z
 - `poetry-llm/research/open_questions.md`: Mapped open questions Q1-Q25 to validation phases and milestones.
 - `poetry-llm/research/prior_art_failures.md`: Refined failure-mitigation matrix to address cliché generation and structural rhythmic breakages.
 
+## 2026-06-28 (DAPT 스케일링 법칙 보완, G2P CoT 격리 원칙 명시, 음향 모델 감시 조건 추가)
+- `poetry-llm/model/continual_pretraining.md`: "스타일 도메인 vs 지식 도메인 DAPT" 섹션 추가. 의료/코드 DAPT(10B~500B 토큰)와 스타일 적응(수백M으로도 효과 가능)의 차이 명시. CPT 건너뛰기(SFT 직행) 옵션 및 Phase 1 비교 실험 필요성 기술. 미결 사항에 [Ph1] 항목 추가.
+- `poetry-llm/model/model_selection.md`: 미결 사항에 음향 내재화 모델 등장 시 재검토 조건 추가 [TODO]. Qwen2-Audio(7B)/LLaMA-3-Omni(8B) 스케일 부적합, Gemini/GPT-4o 클로즈드 현황 기술. CoT scratchpad 방식이 현실적 대안임을 명시.
+- `poetry-llm/preprocessing/korean_g2p_alignment.md`: 섹션 6 "G2P 처리 원칙: CoT 스크래치패드 내부 격리" 신설. 최종 시 출력에 G2P 태그 제거 원칙, Hangul phonetic transparency 특성 기술. 인라인 태그 OOD 문제 명시.
+- `poetry-llm/generation/cot_schema.md`: 스크래치패드 패턴 목록에 음운 계획 메모 추가. "클린 출력 원칙(Clean Output Principle)" 섹션 신설 — `[시]` 블록은 클린 한국어 텍스트만. 미결 사항에 음운 계획 포함 CoT vs 미포함 CoT 비교 실험 항목 추가 [Ph1].
+
 ## 2026-06-27 (편집 상태 마커 전 문서 적용)
 - 전체 wiki 파일에 `[Ph1]`/`[Ph2]`/`[TODO]` 마커를 `## 미결 사항` 항목에 적용 완료.
 - `> 탐색중` 마커를 열린 목록 섹션에 추가 (training_data_formats.md 등).
