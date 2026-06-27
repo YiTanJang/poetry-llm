@@ -22,4 +22,9 @@ timestamp: 2026-06-26T00:00:00Z
 - `poetry-llm/evaluation/human_evaluation.md` 수정: 인간 평가 설계 및 가이드라인 보완 (전문가/일반 패널 구체적 요건, 5점 척도 상세 루브릭, Fleiss' Kappa/Weighted Kappa/Krippendorff's Alpha 등 평가자 일치도 통계량 설계, 불일치 조정 프로토콜 추가).
 - `poetry-llm/evaluation/index.md` 수정: 인간 평가 가이드라인 제목 수정 및 누락 문서(llm_as_judge.md, evaluation_pipeline.md) 리스트 보완.
 - `poetry-llm/data/quality_and_cleaning.md` 신규 생성 및 `index.md` 수정: 데이터 정제 및 품질 필터링 가이드라인 작성 (메타데이터 표준 스키마, OCR 오류 정밀 보정, 띄어쓰기 및 구두점 보존 규칙, Layout/PPL/MinHash 중복 품질 필터, 공정이용 및 Opt-out 저작권 전략 명세).
+- `poetry-llm/generation/index.md` 수정: 누락된 5개 문서(`cot_schema.md`, `cot_training_data_design.md`, `harness_design.md`, `multi_agent_council.md`, `thought_process_stages.md`) 등록.
+- `poetry-llm/generation/iterative_refinement.md` 수정: 비평-수정 루프 오케스트레이션 설계 상세화, 구체적 비평 기준용 시스템/요청 프롬프트 템플릿 추가, 무한 루프 방지를 위한 4단계 방어 기제(하드 반복 제한, 시맨틱 코사인 유사도 정체 감지, Temperature 감쇠, Fallback Selector) 상세 명세 추가, 신규 미결 사항 업데이트.
+- `poetry-llm/model/finetuning_strategy.md` 수정: 배치 사이즈(Effective 16~64, GPU-accumulation 설정), warmup ratio(0.03), token budget(50M~200M), 커리큘럼 단계별 토큰량 상세 추정(총 120M), 조기 종료 기준(early_stopping_patience=3) 및 특수 토큰 임베딩 평균/클론 초기화용 파이썬 스크립트 작성, 미결 사항 갱신.
+- `poetry-llm/model/index.md` 수정: `continual_pretraining.md` 및 `training_infrastructure.md` 문서 등록.
+- `poetry-llm/preprocessing/training_data_formats.md` 수정: 8가지 학습 데이터 생성 포맷에 대한 개요 및 학습 목적, 표준 JSON 스키마, 특수 토큰과 발음 정보 레이어가 내재된 상세한 한국어 시 예시 추가 및 신규 미결 사항 정리.
 
