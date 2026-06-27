@@ -8,6 +8,18 @@ timestamp: 2026-06-28T00:00:00Z
 
 # Continual Pretraining 전략
 
+## DAPT/CPT의 시작점: Base 모델 선택 (Core Design Decision)
+
+DAPT를 시작할 때 이미 지시어 정렬(RLHF/DPO)이 적용된 **Instruct/Chat 모델**을 사용할지, 혹은 일반 **사전학습 Base 모델**을 사용할지 결정해야 한다.
+
+*   **결정**: 본 프로젝트는 **사전학습 Base 모델(Base Model)**에서 DAPT/CPT를 진행하는 것을 원칙으로 삼는다.
+*   **근거**:
+    1.  **지시 가중치(Instruction Weights) 손상 방지**: 이미 Instruct 튜닝이 완료된 모델은 DAPT 단계에서 원시 텍스트(Raw Text)를 대규모로 노출시키면 이전에 형성된 지시 이행 능력(Instruction-following) 가중치가 급격히 붕괴(drift)한다.
+    2.  **스타일 왜곡 방지**: Instruct 모델은 정돈되고 가독성 높은 일상 구어를 생성하는 편향(Bias)이 주입되어 있으므로, 통사 파격이 필요한 현대시의 스타일 변환에 저항성이 생긴다.
+    3.  **Instruction Replay 비율의 최적화**: Base 모델에서 출발하므로 CPT 단계에서 Catastrophic Forgetting을 방어하기 위한 대화형(Instruction) 리플레이 버퍼를 대량으로 구축할 필요가 없으며, 일반 한국어 Replay Buffer의 비율을 최소화(5% 이하)하여 순수 시 코퍼스의 학습 밀도를 높일 수 있다.
+
+---
+
 ## Mid-training과의 관계
 
 현대 LLM 파이프라인에서 우리가 CPT(Continual Pretraining)라고 부르는 단계는 업계에서 **mid-training**이라고도 불린다. Llama 3, Gemma, Qwen2.5 모두 이 단계를 명시적으로 가진다.
@@ -15,10 +27,10 @@ timestamp: 2026-06-28T00:00:00Z
 ```
 Pretraining (범용 웹 데이터, 수T 토큰)
       ↓
-Mid-training / CPT  ← 우리가 하는 단계
+Mid-training / CPT  ← 우리가 하는 단계 (Base 모델에서 출발)
       (도메인 특화 + 고품질 데이터 믹스, next-token prediction 유지)
       ↓
-SFT → DPO
+SFT → DPO/GRPO
 ```
 
 **Annealing**: mid-training 마지막 구간에서 학습률을 급격히 낮추면서 동시에 고품질 데이터 비율을 높이는 기법. Llama 3 / Qwen2.5 모두 사용. 우리 DAPT 레시피의 후반부에 적용을 고려할 수 있다 — 예를 들어 마지막 10% 스텝에서 LR을 $1 \times 10^{-6}$으로 고정하고 Replay Buffer 비율을 일시적으로 높이는 방식.
