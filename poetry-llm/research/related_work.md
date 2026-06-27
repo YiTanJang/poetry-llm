@@ -212,12 +212,12 @@ timestamp: 2026-06-27T00:00:00Z
 
 ## 미결 참고문헌 (찾아볼 것)
 
-- [ ] 한국 현대시 자동 분석 관련 NLP 논문 (형태소 분석 기반 운율 분석 등)
-- [ ] 문학적 창의성(literary creativity) 계산 측정 연구 — Birkhoff 1933부터 최신까지
-- [ ] 다국어 미학 전이(multilingual aesthetic transfer) 연구
-- [ ] 커리큘럼 학습이 창의적 생성에 미치는 영향
-- [ ] 일본 하이쿠 NLP 생성 연구 (여백의 미 전이 가능성)
-- [ ] CrPO(Creative Preference Optimization)를 시 도메인에 직접 적용한 선례
+- [TODO] 한국 현대시 자동 분석 관련 NLP 논문 (형태소 분석 기반 운율 분석 등)
+- [TODO] 문학적 창의성(literary creativity) 계산 측정 연구 — Birkhoff 1933부터 최신까지
+- [TODO] 다국어 미학 전이(multilingual aesthetic transfer) 연구
+- [TODO] 커리큘럼 학습이 창의적 생성에 미치는 영향
+- [TODO] 일본 하이쿠 NLP 생성 연구 (여백의 미 전이 가능성)
+- [TODO] CrPO(Creative Preference Optimization)를 시 도메인에 직접 적용한 선례
 
 ---
 
@@ -250,6 +250,6 @@ timestamp: 2026-06-27T00:00:00Z
 
 ## 미결 사항
 
-- COIG-Writer의 데이터 혼합 전략(1:12 비율)이 한국어 현대시 풀 파인튜닝 시 성능 저하(general degradation) 방지와 시적 독창성 유지의 관점에서도 최적의 비율인지 어떻게 실증할 것인가?
-- CreativeBench의 탐색형 창의성(Exploratory Creativity) 측정 개념을 도입할 때, 실행(execution) 검증이 불가능한 한국어 현대시 영역에서 참신한 시상(Novelty)과 무작위 환각(Hallucination)의 경계를 구분하는 정량적 평가 메트릭을 어떻게 정립할 것인가?
-- CreativeBench에서 제안된 진화적 역프롬프트(EvoRePE)와 같은 추론 시점의 다양성 제어 및 지향적 탐색 기법을 우리의 '창작 노트(CoT) → 시 초안 → 반복 수정' 3단계 생성 파이프라인에 어떻게 이식할 것인가?
+- [Ph1] COIG-Writer의 데이터 혼합 전략(1:12 비율)이 한국어 현대시 풀 파인튜닝 시 성능 저하(general degradation) 방지와 시적 독창성 유지의 관점에서도 최적의 비율인지 어떻게 실증할 것인가?
+- [Ph1] CreativeBench의 탐색형 창의성(Exploratory Creativity) 측정 개념을 도입할 때, 실행(execution) 검증이 불가능한 한국어 현대시 영역에서 참신한 시상(Novelty)과 무작위 환각(Hallucination)의 경계를 구분하는 정량적 평가 메트릭을 어떻게 정립할 것인가?
+- [Ph1] CreativeBench에서 제안된 진화적 역프롬프트(EvoRePE)와 같은 추론 시점의 다양성 제어 및 지향적 탐색 기법을 우리의 '창작 노트(CoT) → 시 초안 → 반복 수정' 3단계 생성 파이프라인에 어떻게 이식할 것인가?

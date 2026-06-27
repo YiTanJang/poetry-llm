@@ -60,6 +60,6 @@ git branch -d task/YYYYMMDD-간략설명
 
 ## 미결 사항
 
-- AGENTS.md가 없을 경우 Antigravity가 CLAUDE.md를 읽는지 확인 필요
-- task 브랜치 네이밍 컨벤션을 더 구체화할 것인가 (섹션 접두사 등)
-- 두 에이전트가 동시에 작업할 경우 파일 분배를 누가 조율하는가
+- [TODO] AGENTS.md가 없을 경우 Antigravity가 CLAUDE.md를 읽는지 확인 필요
+- [TODO] task 브랜치 네이밍 컨벤션을 더 구체화할 것인가 (섹션 접두사 등)
+- [TODO] 두 에이전트가 동시에 작업할 경우 파일 분배를 누가 조율하는가

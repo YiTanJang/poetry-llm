@@ -6,6 +6,12 @@ timestamp: 2026-06-26T00:00:00Z
 
 # 변경 이력
 
+## 2026-06-27 (편집 상태 마커 전 문서 적용)
+- 전체 wiki 파일에 `[Ph1]`/`[Ph2]`/`[TODO]` 마커를 `## 미결 사항` 항목에 적용 완료.
+- `> 탐색중` 마커를 열린 목록 섹션에 추가 (training_data_formats.md 등).
+- 적용 범위: preprocessing/ (4), overview/ (2), generation/ (9), evaluation/ (5), research/ (3), data/ (9) — 총 32개 파일.
+- `problems.md`: OKF 구조 없음, 마커 적용 대상 외.
+
 ## 2026-06-27 (설계 정렬 — CoT·하네스·아키텍처 수정)
 - `poetry-llm/data/acquisition.md`: DRM 관련 언급 제거 (프라이버시 수정).
 - `poetry-llm/generation/cot_schema.md`: 에이전트가 재도입한 8단계 창작 사고 과정 섹션 전체 제거. 스크래치패드는 자유형이며 단계를 강제하지 않는 원칙 복원. 미결 사항을 자유형 설계 관련 질문으로 교체.

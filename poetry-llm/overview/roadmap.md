@@ -75,7 +75,7 @@ timestamp: 2026-06-26T00:00:00Z
 
 ## 미결 사항 (Open Questions)
 
-- 페르소나 수 최적화: 3개가 실제로 충분히 다른 출력을 내는지 Phase 1 실험으로 검증 필요 → [generation/multi_agent_council.md](../generation/multi_agent_council.md)
-- 보조 예술 데이터의 비율 및 혼합 방식
-- 다국어 시를 한국어 시 학습에 어떻게 연결할 것인가
-- 평가자 구성 (문학 전문가 vs 일반 독자)
+- [Ph1] 페르소나 수 최적화: 3개가 실제로 충분히 다른 출력을 내는지 Phase 1 실험으로 검증 필요 → [generation/multi_agent_council.md](../generation/multi_agent_council.md)
+- [Ph1] 보조 예술 데이터의 비율 및 혼합 방식
+- [TODO] 다국어 시를 한국어 시 학습에 어떻게 연결할 것인가
+- [TODO] 평가자 구성 (문학 전문가 vs 일반 독자)
