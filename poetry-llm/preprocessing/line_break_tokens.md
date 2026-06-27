@@ -394,6 +394,72 @@ class PoetryValidator:
 
 ---
 
+## 6. 토크나이저 특수 토큰 병합 검증 프로토콜 (Tokenizer Special Token Verification Protocol)
+
+한글 특수 토큰(`<행갈이>`, `<연갈이>` 등)을 토크나이저의 `additional_special_tokens`로 추가할 때, 접두사 공백 병합(Prefix Space Merging)이나 자소 단위 BPE 바이트 분절(Byte-splitting) 이상이 발생하지 않는지 검증하는 파이썬 유닛 테스트 프로토콜을 구축한다.
+
+### 검증 핵심 요소
+1. **정상 어휘 차단 (Special Token Priority)**: 추가된 특수 토큰이 개별 문자(예: '<', '행', '갈', '이', '>')로 쪼개지지 않고 단일 토큰 ID로 온전히 인코딩되는가?
+2. **공백 병합 격리 (Space Merging Isolation)**: 특수 토큰 바로 뒤나 앞에 공백이 배치되었을 때(예: `<행갈이> `, ` <연갈이>`), 공백과 특수 토큰이 하나로 결합된 이상한 하위 토큰으로 매핑되지 않고 독립적인 `[스페셜 토큰 ID] + [공백 토큰 ID]`의 시퀀스로 안정적으로 분리되는가?
+
+### 검증 파이썬 스크립트
+
+```python
+import torch
+from transformers import AutoTokenizer
+
+def verify_special_tokens_integrity(model_name_or_path: str):
+    """
+    한글 특수 토큰의 토큰화 안정성 및 공백 병합 오작동 여부를 검증하는 프로토콜
+    """
+    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
+    special_tokens = ["<시작>", "<끝>", "<행갈이>", "<연갈이>"]
+    
+    # 1. 특수 토큰 추가
+    num_added = tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
+    print(f"Added {num_added} special tokens to {model_name_or_path}")
+    
+    # 2. 개별 토큰 분절 방지 검사 (Strict Encoding Check)
+    for token in special_tokens:
+        token_id = tokenizer.convert_tokens_to_ids(token)
+        encoded_ids = tokenizer.encode(token, add_special_tokens=False)
+        
+        assert len(encoded_ids) == 1, f"오류: 특수 토큰 {token}이 개별 자소로 쪼개졌습니다: {encoded_ids}"
+        assert encoded_ids[0] == token_id, f"오류: 인코딩 ID {encoded_ids[0]}와 convert_ids {token_id}가 불일치합니다."
+        
+    print("✓ [검증 완료] 모든 특수 토큰이 단일 ID로 분절 없이 매핑됩니다.")
+
+    # 3. 접두사/접미사 공백 병합 격리 검사 (Space-Merging Isolation Check)
+    test_cases = [
+        ("<행갈이> ", ["<행갈이>", " "]),
+        (" <행갈이>", [" ", "<행갈이>"]),
+        ("<연갈이> 밤하늘", ["<연갈이>", " 밤하늘"]),
+    ]
+    
+    for text, expected_tokens in test_cases:
+        encoded_ids = tokenizer.encode(text, add_special_tokens=False)
+        decoded_tokens = [tokenizer.decode([tid]) for tid in encoded_ids]
+        
+        # 공백이 스페셜 토큰 내부에 먹혀들어갔는지 검사
+        for tid in encoded_ids:
+            decoded_single = tokenizer.decode([tid])
+            for sp_token in special_tokens:
+                if sp_token in decoded_single and decoded_single != sp_token:
+                    raise AssertionError(
+                        f"오류: 스페셜 토큰 {sp_token}이 주변 공백과 강제 병합되었습니다: '{decoded_single}' (IDs: {encoded_ids})"
+                    )
+                    
+    print("✓ [검증 완료] 특수 토큰과 인접 공백이 이상 병합 없이 정상 분리됩니다.")
+
+if __name__ == "__main__":
+    try:
+        verify_special_tokens_integrity("Qwen/Qwen2.5-32B")
+    except Exception as e:
+        print(f"검증 실패: {e}")
+```
+
+---
+
 ## 미결 사항
 
 - [Ph1] 어미/조사 모호성에 따른 오분류 극복 방안: 형태소 및 구문 분석기 성능 한계로 인해 시적 언어(예: 도치법, 생략법, 고어체 또는 신조어)에서 조사/어미가 종결형인지 연결/관형형인지 모호한 경우, `<행갈이:걸침>`과 `<행갈이>`를 오분류할 가능성이 존재한다. 이 경우 데이터 정제 프로세스에서 오분류율을 최소화하기 위한 휴리스틱 보완책이나 인간 검수(Human-in-the-loop) 가이드라인을 어떻게 설정해야 하는가?
