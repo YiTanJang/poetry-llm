@@ -3,7 +3,7 @@ type: Roadmap
 title: 단계별 로드맵
 description: 프로젝트 실행 단계 — 데이터 수집부터 모델 평가까지.
 tags: [roadmap, phases, planning]
-timestamp: 2026-06-26T00:00:00Z
+timestamp: 2026-06-28T00:00:00Z
 ---
 
 # 로드맵
@@ -73,9 +73,8 @@ timestamp: 2026-06-26T00:00:00Z
 - [ ] 추론 시 LoRA 선택 / 혼합 인터페이스 설계
 - [ ] temperature × LoRA 조합 실험
 
-## 미결 사항 (Open Questions)
-
-- [Ph1] 페르소나 수 최적화: 3개가 실제로 충분히 다른 출력을 내는지 Phase 1 실험으로 검증 필요 → [generation/multi_agent_council.md](../generation/multi_agent_council.md)
+## 미결 사항
+- [Ph1] 페르소나 수 최적화: 3개의 페르소나가 실제로 고유하고 다양한 출력 분포를 생성하는지 검증이 필요함. 이를 위해 Qwen2.5-10.7B 모델을 활용한 파일럿 SFT 생성 실험을 수행하고, 생성된 결과물 간의 어휘적 거리(예: self-BLEU) 및 의미적 거리(예: 한국어 특화 임베딩 모델을 통한 embedding similarity)를 정량적으로 측정하여 페르소나별 출력 분포의 독립성을 검증할 계획임. → [generation/multi_agent_council.md](../generation/multi_agent_council.md)
 - [Ph1] 보조 예술 데이터의 비율 및 혼합 방식
-- [TODO] 다국어 시를 한국어 시 학습에 어떻게 연결할 것인가
+- [TODO] 다국어 시를 한국어 시 학습에 어떻게 연결할 것인가: 한국어 시 생성 능력 향상을 위해 다국어 시 데이터를 활용하는 최적의 방안에 대한 고민. 주요 고려 옵션으로는 다국어 시와 한국어 시의 공동 지도 미세조정(joint SFT), 다국어 시 번역 정렬 데이터(translated alignments) 활용, 혹은 다국어 코퍼스를 포함한 다중 작업 교차 언어 사전 학습(multi-task cross-lingual pre-training) 등이 있음.
 - [TODO] 평가자 구성 (문학 전문가 vs 일반 독자)
