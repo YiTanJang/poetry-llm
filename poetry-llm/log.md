@@ -6,7 +6,39 @@ timestamp: 2026-06-26T00:00:00Z
 
 # 변경 이력
 
-## 2026-06-27
+## 2026-06-27 (Antigravity Agent Wiki Improvements)
+- `poetry-llm/data/korean_contemporary.md`: Added OCR quality assurance pipeline descriptions and Python pseudocode, typography preservation strategies (spacing preserver, layout tag schemas), and 3 open questions.
+- `poetry-llm/data/korean_classical.md`: Added a comprehensive legal and editing guide for public domain poetry (1956 cutoff, compilation copyrights, translation rights) and 3 open questions.
+- `poetry-llm/data/poetry_criticism.md`: Formulated mixing ratios (CPT vs SFT), training stages assigning guidelines, and Translation QA guidelines for foreign poetics, and 3 open questions.
+- `poetry-llm/data/foreign_poetry.md`: Defined parallel/interleaving translation formats and cross-lingual aesthetic transfer strategies (Western modernism, Haiku, Misty Poetry, Dinggedicht), and 3 open questions.
+- `poetry-llm/data/other_arts.md`: Detailed translation methods for non-linguistic arts (Visual, Auditory, Audiovisual) into poetry meta-prompts with concrete Korean cultural examples, and 3 open questions.
+- `poetry-llm/data/acquisition.md`: Outlined web-scraping script architecture (asynchronous scrapers with Python code), fair-use legal arguments, and publisher collaboration sandbox/royalty models, and 3 open questions.
+- `poetry-llm/preprocessing/line_break_tokens.md`: Defined structural rules for enjambment (`<행갈이:걸침>`) and spacing (`<여백:N>`) tokens, and updated code blocks to support enjambment/spacing, and 3 open questions.
+- `poetry-llm/preprocessing/pronunciation.md`: Specified pronunciation representation levels (KSP, IPA, Grapheme) and cross-lingual phonetic transfer rules, and 3 open questions.
+- `poetry-llm/preprocessing/korean_g2p_alignment.md`: Designed Kiwi + g2pk alignment pipeline, G2P dictionary schema, and Python helper class `KoreanG2PAligner` for Hangul decomposition, and 3 open questions.
+- `poetry-llm/preprocessing/training_data_formats.md`: Added detailed SFT vs CPT tokenization schemas and SFT JSON-L dataset records for all 7 reorganized formats, and 3 open questions.
+- `poetry-llm/model/model_selection.md`: Compared Qwen2.5-32B, LLaMA-3-70B, solar-10.7B models across efficiency, size, and licenses, and 3 open questions.
+- `poetry-llm/model/finetuning_strategy.md`: Detailed SFT stage learning rate, warm restarts, optimizer resets across curriculum stages 1-4, and 3 open questions.
+- `poetry-llm/model/special_tokens.md`: Verified Qwen2.5 newline tokenization (`\n` as 198) and added full HuggingFace model/tokenizer initialization script with 128-alignment resizing and average embedding copying, and 3 open questions.
+- `poetry-llm/model/continual_pretraining.md`: Expanded DAPT training recipe with corpus blend (300M token budget), sequence packing, sequence lengths, learning rates, epochs, and 3 open questions.
+- `poetry-llm/model/training_infrastructure.md`: Wrote HuggingFace Accelerate FSDP YAML and DeepSpeed ZeRO-3 JSON configuration templates, detailed VRAM OOM analysis, and cloud GPU cost/speed simulations, and 3 open questions.
+- `poetry-llm/generation/cot_schema.md`: Refined the 8-step thought process stages, and defined 3 levels of step compression (Lite, Medium, Full) based on resource and length limits, and 3 open questions.
+- `poetry-llm/generation/thought_process_stages.md`: Defined automated metrics (embeddings similarity, keyword recall, structure) and role-contamination penalty multipliers for CoT traceability verification, and 3 open questions.
+- `poetry-llm/generation/cot_training_data_design.md`: Elaborated the synthetic CoT reverse-inference pipeline and bias mitigation tactics (artificial hesitation, correction injections, asymmetric 2-pass prompting), and 3 open questions.
+- `poetry-llm/generation/multi_agent_council.md`: Detailed prompts for 3 Poet Personas + Critic + Reader roles, role contamination defense mechanisms (DEC scratchpads, orchestration filters), and context summarization/isolation protocols, and 3 open questions.
+- `poetry-llm/generation/iterative_refinement.md`: Formulated iterative refinement feedback loop orchestrator with 4 termination conditions (repetition, stagnation, oscillation, max limit) in Python, and 3 open questions.
+- `poetry-llm/generation/harness_design.md`: Outlined class definitions (`PoetryCouncilHarness`) implementing personas and roles, with selective context isolation (CoT stripping), deadlock detection, and context compression, and 3 open questions.
+- `poetry-llm/generation/output_goals.md`: Specified post-processing sanity gate filters (3-100 lines, blank line density) and novelty thresholds (Distinct-N and cosine embedding distance), and 3 open questions.
+- `poetry-llm/evaluation/evaluation_pipeline.md`: Outlined Reward Model pairwise dataset sizing constraints (M1: 1k-2k pairs, M2-M3: 5k-10k pairs) and optimal DPO margin thresholds (0.15) with filtering pseudocode, and 3 open questions.
+- `poetry-llm/evaluation/auto_metrics.md`: Defined formulas for Distinct-N and Unseen n-grams, embedding cosine distances, and common-object novelty syntactic/semantic exception detection, and 3 open questions.
+- `poetry-llm/evaluation/human_evaluation.md`: Outlined screening protocols for experts and readers, Google Form survey questions, inter-rater statistical metrics (Fleiss' Kappa, Krippendorff's Alpha) with Python libraries, and 3 open questions.
+- `poetry-llm/evaluation/aesthetic_quality.md`: Formalized scoring rubrics (1-5 scale) across 6 aesthetic dimensions with high/medium/low quality Korean contemporary poetry examples and critical commentary, and 3 open questions.
+- `poetry-llm/evaluation/llm_as_judge.md`: Designed Echo Chamber bias correction prompts and quantitative penalty multipliers ($\lambda_{\text{self}} = 0.92$, $\lambda_{\text{family}} = 0.95$), and 3 open questions.
+- `poetry-llm/research/related_work.md`: Extracted pipeline lessons from COIG-Writer (process-supervision) and CreativeBench (quality x novelty steering), and 3 open questions.
+- `poetry-llm/research/open_questions.md`: Mapped open questions Q1-Q25 to Project Phase 0-3 roadmaps and updated statuses using literature citations, and 3 open questions.
+- `poetry-llm/research/prior_art_failures.md`: Created a Failure-to-Mitigation Matrix mapping AI failures to DPO, G2P, CoT, etc., and detailed technical mitigation tactics for clichés, logical drift, and rhythm break, and 3 open questions.
+
+## 2026-06-27 (Antigravity Agent)
 - Antigravity 에이전트 파일 편집 기능 확인 (테스트)
 
 ## 2026-06-26
