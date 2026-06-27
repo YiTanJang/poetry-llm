@@ -12,6 +12,7 @@ timestamp: 2026-06-26T00:00:00Z
 - `poetry-llm/evaluation/llm_as_judge.md`: 절대 채점 방식을 배제하고 예선(Qwen2.5-7B-Inst / Swiss-system)과 본선(Claude 3.5 Sonnet / Pairwise 3쌍 비교)으로 나뉜 하이브리드 토너먼트 아키텍처 및 마니페스토 프롬프팅 도입. 워드 샐러드 차단 규칙 명시.
 - `poetry-llm/model/model_selection.md` & `poetry-llm/model/continual_pretraining.md`: DAPT/CPT의 시작점으로 '사전 학습 Base 모델'을 채택하도록 명시하여 Instruct 모델의 정렬 가중치 붕괴 방지 및 Replay Buffer 최소화 전략 확정.
 - `poetry-llm/preprocessing/line_break_tokens.md`: 한글 특수 토큰의 안정성과 공백 병합(Prefix Space Merging) 및 BPE 바이트 분절 오작동을 검증하는 파이썬 테스트용 '토크나이저 특수 토큰 병합 검증 프로토콜' 신설.
+- `poetry-llm/overview/vision.md`: 환각(Hallucination) 문헌 인용(Yi, S., 2023)을 검증된 백낙청(2009)의 "현대시와 근대성, 그리고 대중의 삶" 실제 비평 논문으로 정정 반영.
 
 ## 2026-06-28 (Antigravity Agent - 30 Wiki Improvements)
 - `poetry-llm/overview/goals.md`: Added ## 미결 사항 (other arts, prose, copyright opt-out).

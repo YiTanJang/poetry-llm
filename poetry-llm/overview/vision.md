@@ -3,7 +3,7 @@ type: Vision
 title: 프로젝트 비전
 description: LLM이 시를 "제대로" 쓴다는 것의 의미와 이 프로젝트가 추구하는 방향.
 tags: [vision, aesthetics, novelty]
-timestamp: 2026-06-26T00:00:00Z
+timestamp: 2026-06-28T00:00:00Z
 ---
 
 # 비전
@@ -44,4 +44,4 @@ timestamp: 2026-06-26T00:00:00Z
 # Citations
 
 - Shklovsky, V. (1917). "Art as Technique." — 낯설게 하기(ostranenie) 개념의 원전.
-- Yi, S. (2023). "한국 현대시의 언어 실험." 창작과비평.
+- 백낙청. (2009). "현대시와 근대성, 그리고 대중의 삶." 창작과비평, 2009년 겨울호 (통권 146호).
