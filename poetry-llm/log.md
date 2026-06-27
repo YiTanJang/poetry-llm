@@ -6,6 +6,12 @@ timestamp: 2026-06-26T00:00:00Z
 
 # 변경 이력
 
+## 2026-06-27 (설계 정렬 — CoT·하네스·아키텍처 수정)
+- `poetry-llm/data/acquisition.md`: DRM 관련 언급 제거 (프라이버시 수정).
+- `poetry-llm/generation/cot_schema.md`: 에이전트가 재도입한 8단계 창작 사고 과정 섹션 전체 제거. 스크래치패드는 자유형이며 단계를 강제하지 않는 원칙 복원. 미결 사항을 자유형 설계 관련 질문으로 교체.
+- `poetry-llm/generation/multi_agent_council.md`: 시인 페르소나 이름 수정 (전통주의자/모더니스트/아방가르드 → 감각형/개념형/형식실험형). 비평가/독자 에이전트를 Phase 1 ablation 실험 대상으로 이동. 8단계 언급 제거. 판정 기준 프롬프트 페르소나명 수정.
+- `poetry-llm/generation/harness_design.md`: 전면 재작성. 300줄 Python 구현 제거, 개념 수준으로 정리. 창작 도구 하네스(random_words, news_snippet, dice, syllable_count, creative_note) 설계 추가. 인간 개입 지점 정의. Phase 1 실험 대상 명시.
+
 ## 2026-06-27 (Antigravity Agent Wiki Improvements)
 - `poetry-llm/data/korean_contemporary.md`: Added OCR quality assurance pipeline descriptions and Python pseudocode, typography preservation strategies (spacing preserver, layout tag schemas), and 3 open questions.
 - `poetry-llm/data/korean_classical.md`: Added a comprehensive legal and editing guide for public domain poetry (1956 cutoff, compilation copyrights, translation rights) and 3 open questions.
