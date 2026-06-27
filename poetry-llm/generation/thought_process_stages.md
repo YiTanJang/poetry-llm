@@ -131,10 +131,159 @@ o1과 DeepSeek-R1은 추론 단계를 처방받지 않았다.
 
 ---
 
+## 사고-최종 시 정렬 검증 프레임워크 (Alignment & Traceability)
+
+추론 과정(CoT)의 품질이 단순히 형식적 충족에 그치지 않고, 최종 생성된 시에 실제로 유의미하게 투영되었는지 확인하기 위한 **정렬 검증 프레임워크(Traceability Framework)**를 설계한다. 이 프레임워크는 사고 단계에서의 의도와 결정사항이 최종 출력물에 충실히 반영되었는지를 객관적이고 자동화된 지표로 평가한다.
+
+### 1. 자동화된 정렬 매칭 지표 (Automated Alignment Metrics)
+
+1. **시맨틱 유사도 (Semantic Similarity)**
+   - **대상**: CoT 스크래치패드 내의 구체적 계획/설계 내용(예: "초안 계획", "지향할 정서")과 최종 출력된 시의 본문.
+   - **방법**: 한국어 임베딩 모델(예: KoSentenceBERT, KoE5)을 활용하여 CoT 계획 부문과 최종 시의 코사인 유사도(Cosine Similarity)를 측정한다.
+   - **목적**: 사고 과정의 논리적 지향점이 시의 문맥적 흐름과 일맥상통하는지 검증한다. 너무 동떨어진 엉뚱한 시가 나오는 것을 차단한다.
+
+2. **키워드 재현율 및 제약 준수도 (Keyword Recall & Constraint Satisfaction)**
+   - **긍정 재현율 (Positive Recall)**: CoT 과정에서 "이 시의 핵심 이미지로 채택하겠다"고 결정한 고유 단어/소재들이 최종 시에 실제로 포함되었는지 비율을 계산한다.
+     $$\text{Recall} = \frac{||\text{CoT 채택 키워드} \cap \text{최종 시 단어}||}{||\text{CoT 채택 키워드}||}$$
+   - **부정 제약 준수도 (Negative Constraint Adherence)**: CoT 과정에서 "상투적이므로 배제하겠다"고 선언한 금지 단어가 최종 시에 등장했는지 여부를 판별한다. 등장할 경우 감점을 부과한다.
+
+3. **구조적 준수율 (Structural Adherence)**
+   - **대상**: CoT에서 설정한 형식적 제약(예: "3연 구성", "각 연은 2행씩", "특수 토큰 사용 계획")과 최종 시의 실제 구조.
+   - **방법**: 정규표현식 및 파서를 통해 최종 시의 연(Stanza)과 행(Line) 개수를 세고, CoT의 계획값과 일치하는지 비율을 산출한다.
+   - **특수 토큰 검증**: CoT에서 의도한 위치에 `<행갈이>`, `<연갈이>`가 규칙적으로 삽입되었는지 체크한다.
+
+---
+
+### 2. 역할 오염 페널티 (Role-Contamination Penalty)
+
+**역할 오염(Role-Contamination)**이란 생성 모델이 추론(CoT/Scratchpad) 영역과 최종 출력(시) 영역의 경계를 혼동하여 상호 오염시키는 현상이다.
+- **예시 A (CoT 오염)**: 스크래치패드 내에 생각 과정이 아닌, 이미 완성된 형태의 시 구절을 무단으로 미리 나열하는 경우.
+- **예시 B (시 오염)**: 최종 시 출력 영역에 메타 지시어나 설명적 어조("~를 시로 표현해 보았습니다", "1연을 작성하겠습니다" 등), 혹은 추론 단계의 마크다운 헤더가 침범하는 경우.
+
+**페널티 부과 방식:**
+1. **오염 감지**: 최종 시 영역에서 종결어미(`-습니다`, `-한다` 등의 메타 서술), 특정 마크다운 패턴(`##`, `- `), 혹은 생각 프로세스 특수 토큰의 부적절한 노출을 탐색한다.
+2. **수식 적용**: 오염이 감지되면 정렬도 점수(Alignment Score)에 무조건적인 멀티플라이어 페널티($\alpha_{penalty} = 0.0$ 또는 $0.1$)를 곱해 해당 트레이스의 가치를 무력화한다. RLHF/RLAIF 보상 모델에서 해당 트레이스의 보상값을 최하점으로 강제한다.
+
+---
+
+### 3. 검증 엔진 파이썬 의사코드 (Python Pseudocode)
+
+아래는 사고 과정과 최종 시 간의 정렬도 및 역할 오염을 종합적으로 자동 평가하는 검증 프레임워크의 의사코드이다.
+
+```python
+import re
+from typing import Dict, List, Tuple
+
+def calculate_semantic_similarity(cot_plan: str, poem: str) -> float:
+    """
+    Sentence-BERT 등을 활용하여 CoT 계획부와 최종 시 간의 코사인 유사도를 계산합니다.
+    (실제 구현에서는 사전 학습된 임베딩 모델의 API를 호출)
+    """
+    # Pseudo-code embedding comparison
+    # cot_vector = embedding_model.encode(cot_plan)
+    # poem_vector = embedding_model.encode(poem)
+    # return cosine_similarity(cot_vector, poem_vector)
+    return 0.85  # 예시 값 반환
+
+def evaluate_keyword_adherence(chosen_keywords: List[str], 
+                               prohibited_keywords: List[str], 
+                               poem: str) -> Tuple[float, float]:
+    """
+    긍정 키워드 재현율 및 부정 키워드 위반 여부를 계산합니다.
+    """
+    if not chosen_keywords:
+        recall = 1.0
+    else:
+        matched_positive = [w for w in chosen_keywords if w in poem]
+        recall = len(matched_positive) / len(chosen_keywords)
+        
+    violation_count = sum(1 for w in prohibited_keywords if w in poem)
+    # 위반 키워드 하나당 0.2씩 감점 (최소 0.0)
+    negative_score = max(0.0, 1.0 - (violation_count * 0.2))
+    
+    return recall, negative_score
+
+def evaluate_structural_adherence(expected_stanzas: int, poem: str) -> float:
+    """
+    최종 시의 연(stanza) 개수가 CoT의 계획과 일치하는지 평가합니다.
+    """
+    # 연갈이 토큰 '<연갈이>' 또는 연속 개행('\n\n') 기준으로 연 분할
+    stanzas = [s for s in re.split(r'<연갈이>|\n\n', poem.strip()) if s.strip()]
+    actual_stanzas = len(stanzas)
+    
+    if expected_stanzas == 0:
+        return 1.0
+    
+    # 계획된 연 수와의 오차율 기반 점수 산출
+    error = abs(expected_stanzas - actual_stanzas)
+    return max(0.0, 1.0 - (error / expected_stanzas))
+
+def detect_role_contamination(poem: str) -> bool:
+    """
+    최종 시 내부에 메타 설명, 생각 마크다운, 혹은 대화형 어미가 포함되어 
+    역할 오염이 일어났는지 감지합니다.
+    """
+    # 마크다운 헤더, 목록 지시자, 또는 특정 메타 어투 분석
+    contamination_patterns = [
+        r"^#+\s",                    # 마크다운 헤더 침범
+        r"^[-\*\+]\s",                # 리스트 불릿 침범
+        r"(작성하겠습니다|작성함|생각 과정)", # 메타 서술어
+        r"(<시작>|<끝>|<행갈이>|<연갈이>)\s*:\s*" # 태깅 메타 구조 잔재
+    ]
+    
+    for pattern in contamination_patterns:
+        if re.search(pattern, poem, re.MULTILINE):
+            return True
+            
+    # 시의 마지막 부분에 사설성 멘트가 길게 들어가는 경우 감지
+    if "시를" in poem or "주제" in poem:
+        if len(poem) > 100 and any(end in poem for end in ["감사합니다", "도움이 되셨기를"]):
+            return True
+            
+    return False
+
+def calculate_alignment_score(trace: Dict) -> Dict[str, float]:
+    """
+    CoT와 최종 시의 전체 정렬 상태를 평가하여 종합 점수를 반환합니다.
+    """
+    cot_plan = trace.get("cot_plan", "")
+    poem = trace.get("poem", "")
+    chosen_keywords = trace.get("chosen_keywords", [])
+    prohibited_keywords = trace.get("prohibited_keywords", [])
+    expected_stanzas = trace.get("expected_stanzas", 0)
+    
+    # 1. 개별 지표 계산
+    semantic_sim = calculate_semantic_similarity(cot_plan, poem)
+    recall, neg_adherence = evaluate_keyword_adherence(chosen_keywords, prohibited_keywords, poem)
+    struct_adherence = evaluate_structural_adherence(expected_stanzas, poem)
+    
+    # 2. 역할 오염 체크 (오염 시 페널티 배수 0.0 적용)
+    is_contaminated = detect_role_contamination(poem)
+    penalty_multiplier = 0.0 if is_contaminated else 1.0
+    
+    # 3. 가중합 산출
+    raw_score = (
+        0.4 * semantic_sim +
+        0.3 * ((recall + neg_adherence) / 2.0) +
+        0.3 * struct_adherence
+    )
+    
+    final_score = raw_score * penalty_multiplier
+    
+    return {
+        "semantic_similarity": semantic_sim,
+        "keyword_recall": recall,
+        "negative_constraint_score": neg_adherence,
+        "structural_adherence": struct_adherence,
+        "is_contaminated": is_contaminated,
+        "final_alignment_score": final_score
+    }
+```
+
+---
+
 ## 미결 사항
 
-- 프로세스 감독 신호를 어떻게 자동화할 것인가 — 인간 레이블러가 스크래치패드의 각 단계를 평가하는 것은 비용이 너무 크다. 외부 모델로 중간 보상을 자동화할 수 있는가.
-- 추론 구조가 실제로 창발되는가 — SFT 이후 모델의 스크래치패드를 분석하여 반복 패턴이 나타나는지 확인해야 한다.
-- 8단계 프레임워크 대비 자유형 접근의 품질 차이 — ablation 없이는 알 수 없다.
-- 스크래치패드 길이와 최종 시 품질의 관계 — 더 긴 사고가 반드시 더 좋은 결과로 이어지는가.
-- 좋은 시인의 실제 창작 과정과 모델이 창발하는 패턴 사이에 유사성이 있는가 — 있다면 모델이 진짜 의미에서 시인처럼 생각하는 것인가, 아니면 그렇게 보이는 것인가.
+- 자동화된 시맨틱 유사도 임계치 설정: CoT 계획과 시 본문 간의 문맥적 유사도를 Sentence-BERT로 측정할 때, 시의 은유적 특성으로 인해 발생하는 낮은 유사도 점수와 실제 의도된 이탈을 구별할 수 있는 최적의 임계치(Threshold)는 얼마인가?
+- 부정 제약(금지어) 리스트의 다이내믹 피드백: 시인의 스타일이나 주제별로 유동적으로 바뀌어야 하는 금지어 사전을 CoT 내에서 어떻게 효율적으로 추론하고 검증 프레임워크에 인자로 전달할 것인가?
+- RLHF/RLAIF 파이프라인에서의 페널티 스케일링: 역할 오염이 발생했을 때 보상값을 완전 제로(0.0)화하는 강한 페널티가 PPO/DPO 등 정책 최적화 과정에서 학습 불안정성(Reward hacking or Optimization collapse)을 유발하는지 여부와 이를 완화할 부드러운 감점 스케일링 방식의 유효성은 어떠한가?
