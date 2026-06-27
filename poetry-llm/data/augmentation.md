@@ -359,10 +359,10 @@ graph TD
 
 ## 미결 사항
 
-- [ ] 학습된 판별기(trained discriminator) 구축에 필요한 positive/negative 학습 데이터 수량 — 실제 시인의 창작 노트가 얼마나 확보 가능한가.
-- [ ] Constitutional 자가 평가의 4개 미학 원칙이 인간 전문가 평가와 얼마나 일치하는지 파일럿 검증 필요 (Pearson r 목표: ≥ 0.5).
-- [ ] 판별기 점수 vs Constitutional 점수의 앙상블 가중치 — 어느 쪽이 인간 평가와 더 상관관계가 높은가.
-- [ ] 주요 한국어 모델(Qwen2.5-72B, EXAONE-3.0 등)의 시적 역추론 성능 비교 파일럿 벤치마크 테스트 수행.
-- [ ] 시적 요소 보존율(PEPR) 메트릭의 가중치 $w_1, w_2, w_3$가 인간 문학 평론가의 주관적 평가와 상관관계 검증.
-- [ ] 국내 문학 출판사들과의 저작권 라이선싱 가이드라인 수립 및 법률 검토.
-- [ ] Constitutional AI 방식 자가 평가 결과를 DPO preference signal로 활용하는 방법론 구체화.
+- [Ph1] 학습된 판별기(trained discriminator) 구축에 필요한 positive/negative 학습 데이터 수량 — 실제 시인의 창작 노트가 얼마나 확보 가능한가.
+- [Ph1] Constitutional 자가 평가의 4개 미학 원칙이 인간 전문가 평가와 얼마나 일치하는지 파일럿 검증 필요 (Pearson r 목표: ≥ 0.5).
+- [Ph1] 판별기 점수 vs Constitutional 점수의 앙상블 가중치 — 어느 쪽이 인간 평가와 더 상관관계가 높은가.
+- [TODO] 주요 한국어 모델(Qwen2.5-72B, EXAONE-3.0 등)의 시적 역추론 성능 비교 파일럿 벤치마크 테스트 수행.
+- [Ph1] 시적 요소 보존율(PEPR) 메트릭의 가중치 $w_1, w_2, w_3$가 인간 문학 평론가의 주관적 평가와 상관관계 검증.
+- [TODO] 국내 문학 출판사들과의 저작권 라이선싱 가이드라인 수립 및 법률 검토.
+- [Ph2] Constitutional AI 방식 자가 평가 결과를 DPO preference signal로 활용하는 방법론 구체화.
