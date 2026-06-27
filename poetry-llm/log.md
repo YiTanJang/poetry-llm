@@ -6,6 +6,38 @@ timestamp: 2026-06-26T00:00:00Z
 
 # 변경 이력
 
+## 2026-06-28 (Antigravity Agent - 30 Wiki Improvements)
+- `poetry-llm/overview/goals.md`: Added ## 미결 사항 (other arts, prose, copyright opt-out).
+- `poetry-llm/overview/roadmap.md`: Updated roadmap open questions (persona, multilingual crossover).
+- `poetry-llm/overview/agent_collaboration.md`: Documented Claude Code and Antigravity collaboration roles and file lock signals.
+- `poetry-llm/data/korean_contemporary.md`: Expanded OCR dictionary rules for archaic Hangul.
+- `poetry-llm/data/korean_classical.md`: Detailed public domain copyright deadlines (1956, 1962 cutoff) and compilation/translation rights.
+- `poetry-llm/data/poetry_criticism.md`: Detailed SFT Stage 3 dialogue conversions for raw criticism.
+- `poetry-llm/data/foreign_poetry.md`: Detailed bilingual alignment formats and cross-lingual sentiment mapping.
+- `poetry-llm/data/acquisition.md`: Detailed collaborative royalty schemes and secure sandboxes.
+- `poetry-llm/data/quality_and_cleaning.md`: Specified PPL thresholding rules and poetic spacing preservation.
+- `poetry-llm/data/token_budget.md`: Refined replay buffer ratios (1% to 5%) and token blending schedules.
+- `poetry-llm/preprocessing/line_break_tokens.md`: Detailed tokenizer parsing and decoding mechanics for special line tokens.
+- `poetry-llm/preprocessing/pronunciation.md`: Documented phonetic representation constraints for loanwords and mimetic words.
+- `poetry-llm/preprocessing/korean_g2p_alignment.md`: Detailed fallback strategies for G2P alignment failures.
+- `poetry-llm/model/model_selection.md`: Compared Qwen2.5-32B vs EXAONE-3.5-32B tokenization fertilities and representation capacity.
+- `poetry-llm/model/finetuning_strategy.md`: Specified learning rate cosine decay and checkpoint saving frequencies.
+- `poetry-llm/model/special_tokens.md`: Defined average embedding copying rules and 128-alignment resizing.
+- `poetry-llm/model/continual_pretraining.md`: Documented cosine annealing schedules, warmup, and data blends for DAPT.
+- `poetry-llm/model/training_infrastructure.md`: Specified memory profiling for 2x A100 80GB setup and prefetch policies.
+- `poetry-llm/generation/cot_schema.md`: Detailed step compression guidelines (Lite/Medium/Full) and context-based triggering.
+- `poetry-llm/generation/thought_process_stages.md`: Defined automated semantic evaluation of CoT trace fidelity.
+- `poetry-llm/generation/cot_training_data_design.md`: Elaborated on poetic hesitation and self-corrections in synthetic CoT data.
+- `poetry-llm/generation/multi_agent_council.md`: Elaborate on distinct persona prompts and role contamination defense.
+- `poetry-llm/generation/iterative_refinement.md`: Defined refinement loop termination criteria (oscillation, repetition, stagnation, max limit).
+- `poetry-llm/evaluation/evaluation_pipeline.md`: Specified optimal chosen/rejected margin threshold calculations ($\Delta \ge 0.15$) for DPO data.
+- `poetry-llm/evaluation/auto_metrics.md`: Documented Mecab and SBERT configuration for lexical and semantic novelty.
+- `poetry-llm/evaluation/human_evaluation.md`: Defined Krippendorff's Alpha scoring protocol for expert panels and low-agreement mitigation.
+- `poetry-llm/evaluation/aesthetic_quality.md`: Detailed 1-5 scale aesthetic rubrics across 6 dimensions with Korean examples.
+- `poetry-llm/research/related_work.md`: Documented research lessons from COIG-Writer (process supervision) and CreativeBench (novelty steering).
+- `poetry-llm/research/open_questions.md`: Mapped open questions Q1-Q25 to validation phases and milestones.
+- `poetry-llm/research/prior_art_failures.md`: Refined failure-mitigation matrix to address cliché generation and structural rhythmic breakages.
+
 ## 2026-06-27 (편집 상태 마커 전 문서 적용)
 - 전체 wiki 파일에 `[Ph1]`/`[Ph2]`/`[TODO]` 마커를 `## 미결 사항` 항목에 적용 완료.
 - `> 탐색중` 마커를 열린 목록 섹션에 추가 (training_data_formats.md 등).
