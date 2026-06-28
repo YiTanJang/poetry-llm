@@ -55,11 +55,11 @@ git branch -d task/YYYYMMDD-간략설명
 ## 작업 지침
 
 1. **읽기 우선**: 담당 섹션의 기존 파일을 모두 읽고 `## 미결 사항`을 파악한 뒤 작업
-2. **OKF 형식 준수**: 편집 규칙은 `editing-system/` 참조
+2. **OKF 형식 준수**: 편집 규칙은 `poetry-llm/editing-system/` 참조
 3. **다른 섹션 참조 시**: 직접 수정 금지, 링크로 연결
 4. **미결 사항 갱신**: 새로 발견한 미결 사항은 해당 파일 `## 미결 사항`에 추가
 5. **근거 있는 주장만**: 추측은 `> 가설:` 블록으로 표시, 검증된 정보는 `# Citations`에 출처 기재
-6. **편집 상태 마커**: `editing-system/okf_format.md` 참조
+6. **편집 상태 마커**: `poetry-llm/editing-system/okf_format.md` 참조
 
 ## 핵심 설계 결정 (변경 시 overview/ 섹션 업데이트 필요)
 

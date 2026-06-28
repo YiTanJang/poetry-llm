@@ -16,6 +16,7 @@ okf_version: "0.1"
 * [generation/](generation/index.md) — 시 생성 파이프라인 및 CoT 설계
 * [evaluation/](evaluation/index.md) — 품질 평가 지표 및 novelty 측정
 * [research/](research/index.md) — 관련 연구 및 미답 질문
+* [editing-system/](editing-system/index.md) — 이 번들의 편집 규칙 및 OKF 포맷 명세
 
 ## 핵심 가설
 
