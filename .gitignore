@@ -29,3 +29,6 @@ Thumbs.db
 
 # Claude Code 내부 설정
 .claude/
+
+# OKF 방법론 메타 문서 (프로젝트 외부 시스템)
+okf-system/
