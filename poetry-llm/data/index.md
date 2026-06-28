@@ -9,6 +9,7 @@
 | [other_arts.md](other_arts.md) | 보조 예술 데이터 (미술, 소설, 극) |
 | [acquisition.md](acquisition.md) | 데이터 수집 방법 및 저작권 전략 |
 | [quality_and_cleaning.md](quality_and_cleaning.md) | 데이터 정제 및 품질 필터링 가이드라인 |
+| [opt_out_system.md](opt_out_system.md) | 저작권 Opt-out 필터링 시스템 |
 | [token_budget.md](token_budget.md) | 토큰 예산 및 데이터 규모 계산 |
 | [augmentation.md](augmentation.md) | 시 데이터 증강 전략 |
 
