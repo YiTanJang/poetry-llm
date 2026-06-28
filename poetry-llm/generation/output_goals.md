@@ -1,9 +1,9 @@
 ---
-type: Design
+type: Goals
 title: 산출물 목표 및 Novelty 필터
 description: 프로젝트가 추구하는 최종 시의 기준 — novelty, 미학적 아이디어, 새로운 수사와 소재.
 tags: [generation, output, novelty, aesthetics]
-timestamp: 2026-06-27T00:00:00Z
+timestamp: 2026-06-28T00:00:00Z
 ---
 
 # 산출물 목표 및 Novelty 필터
@@ -161,7 +161,7 @@ novelty가 높다고 무조건 좋은 시가 아니다.
 
 - [Ph1] 일반 현대시와 시극/산문시 등 장르별 구조적 특성을 고려하여, 공백 행 밀도(Blank Line Ratio) 임계값을 동적으로 조절하는 최적화 기준은 무엇인가?
 - [Ph1] 후렴구(Refrain)나 특정 아나포라 수사가 핵심인 시적 형식에서 행 수준 고유성 비율(Line-Level Uniqueness Ratio) 필터의 오탐지(False Positive)를 효과적으로 방지할 수 있는 예외 처리 알고리즘은 어떻게 설계해야 하는가?
-- [TODO] 초대형 참조 코퍼스($C_{\text{ref}}$)를 기반으로 코사인 임베딩 거리를 실시간으로 연산할 때 발생하는 지연 시간을 최소화하기 위한 벡터 데이터베이스(예: FAISS, Milvus) 도입 방안 및 실시간 필터링 아키텍처는 무엇인가?
+- [TODO] 초대형 참조 코퍼스($C_{\text{ref}}$)를 기반으로 코사인 임베딩 거리를 실시간으로 연산할 때 발생하는 지연 시간을 최소화하기 위한 벡터 데이터베이스(예: FAISS, Milvus) 도입 방안 및 실시간 필터링 아키텍처는 무엇인가? (고려할 전략: HNSW index tuning, quantization (e.g. PQ), 또는 필터링 작업을 별도의 비동기 큐(asynchronous queue)로 분리하는 방안)
 - [Ph2] Best-of-N에서 N 값(8 vs 16 vs 32)과 temperature 설정이 생성 다양성(Distinct-N)과 최고 품질 점수 간 트레이드오프에 미치는 영향. 외부 judge 비용 대비 품질 향상 곡선 측정.
 - [Ph2] PRM 학습을 위한 step-level 레이블 수집 방법론: 인간 전문가 개입 vs 외부 judge 자동화 비교. 시의 창작 과정을 몇 개의 step으로 분절하는 것이 적절한가.
 - [Ph2] Best-of-N + PRM 조합 vs GRPO 단독: 추론 시점 compute 증가(N배 생성 비용)와 학습 시점 투자(GRPO 정렬 비용) 중 어느 쪽이 같은 품질 향상에 더 효율적인가.
