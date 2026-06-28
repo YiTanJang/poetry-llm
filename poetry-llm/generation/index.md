@@ -10,3 +10,4 @@
 | [harness_design.md](harness_design.md) | 에이전트 하네스 설계 |
 | [output_goals.md](output_goals.md) | 최종 산출물 기준 및 최소 sanity 필터 |
 | [prompt_templates.md](prompt_templates.md) | 창작 노트 역추론, CoT 파이프라인 프롬프트 모음 |
+| [vector_filtering.md](vector_filtering.md) | 실시간 벡터 DB 기반 레퍼런스 필터링 아키텍처 |
