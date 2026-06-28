@@ -9,4 +9,6 @@
 
 | 파일 | 내용 |
 |------|------|
-| [okf_format.md](okf_format.md) | frontmatter 명세, 마커 시스템, 파일 명명·커밋 규칙 |
+| [okf_format.md](okf_format.md) | frontmatter 명세, 마커 시스템(상태 전이), 핸드오프 로그 포맷 등 핵심 규칙 |
+
+이 시스템을 통해 OKF는 단순한 문서 모음이 아닌 **상태 기계(State Machine)**로서 동작하며, 에이전트는 폴더 스캔만으로 프로젝트의 전반적인 진척도와 미결 사항을 파악할 수 있습니다.

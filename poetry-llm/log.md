@@ -6,6 +6,11 @@ timestamp: 2026-06-26T00:00:00Z
 
 # 변경 이력
 
+## 2026-06-28 (Antigravity — 15개 파일 미결 사항 구체화, Phase 0)
+- **수정 파일**: `acquisition.md`, `augmentation.md`, `foreign_poetry.md`, `korean_classical.md`, `poetry_criticism.md`, `token_budget.md`, `aesthetic_quality.md`, `human_evaluation.md`, `llm_as_judge.md`, `harness_design.md`, `output_goals.md`, `continual_pretraining.md`, `finetuning_strategy.md`, `model_selection.md`, `training_infrastructure.md`
+- **핵심 결정**: 파인튜닝·데이터·평가·생성 전 단계의 미결 사항을 명확히 하고, 에이전트 독단 결정 불가 항목에 `[User Review]` 플래그 추가 (Phase 0 결정 보류 원칙).
+- **다음 단계**: Phase 0 탐색 완료 항목부터 파일럿 실험 후 Phase 1(PoC) 착수 필요.
+
 ## 2026-06-28 (CPT 스케일링 법칙 업데이트 — PTPP 반박, D-CPT Law 인용, Synthetic CPT, Replay Buffer 실험)
 - `poetry-llm/model/continual_pretraining.md`:
   - **PTPP 오용 주의 섹션 신설**: PTPP(Tokens-Per-Parameter)가 스크래치 프리트레이닝 지표이며 CPT에 부적합함을 명시. 외부 리뷰어의 "300M 토큰 부족" 주장에 대한 위키 내 반박 근거 확립.
