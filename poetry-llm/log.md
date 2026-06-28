@@ -6,6 +6,27 @@ timestamp: 2026-06-26T00:00:00Z
 
 # 변경 이력
 
+## 2026-06-28 (Antigravity — 15개 파일 최종 마스터 병합)
+- **[2026-06-28] 작업 요약**: 위키 구조 개선 및 미결 사항 구체화 (총 15개 작업)
+  - **수정 파일**:
+    - `poetry-llm/research/interview_protocol.md` (신규) 및 `index.md`
+    - `poetry-llm/data/opt_out_system.md` (신규) 및 `index.md`
+    - `poetry-llm/generation/vector_filtering.md` (신규) 및 `index.md`
+    - `poetry-llm/preprocessing/line_break_tokens.md`
+    - `poetry-llm/data/token_budget.md`
+    - `poetry-llm/model/training_infrastructure.md`
+    - `poetry-llm/evaluation/human_evaluation.md`
+    - `poetry-llm/model/peft_vs_full_finetuning.md`
+    - `poetry-llm/preprocessing/training_data_formats.md`
+    - `poetry-llm/generation/cot_creative_notes.md`
+    - `poetry-llm/generation/prompt_templates.md`
+    - `poetry-llm/data/acquisition.md`
+    - `poetry-llm/model/continual_pretraining.md`
+    - `poetry-llm/data/korean_classical.md`
+    - `poetry-llm/model/model_selection.md`
+  - **핵심 결정**: 여백 크기 최대값(N_max=40) 구체화, Replay Buffer 데이터 비율(5%->1%) 수식 추가, 다중 노드 통신 효율 및 MFU 감소율 수치화, 평가 피로도 관리 한계치(전문가 15편/일반 30편) 및 보상 수식 구체화
+  - **다음 단계 (Next Steps)**: [User Review]로 격상된 항목(오픈 라이선스 출처, 베이스 모델 재검토, 프롬프트 전면 재작성 컨펌 등)에 대한 사용자 승인 후 내용 확정. Type A로 신규 작성된 문서(interview_protocol.md 등) 상세 리뷰.
+
 ## 2026-06-28 (Antigravity — 15개 파일 미결 사항 구체화, Phase 0)
 - **수정 파일**: `acquisition.md`, `augmentation.md`, `foreign_poetry.md`, `korean_classical.md`, `poetry_criticism.md`, `token_budget.md`, `aesthetic_quality.md`, `human_evaluation.md`, `llm_as_judge.md`, `harness_design.md`, `output_goals.md`, `continual_pretraining.md`, `finetuning_strategy.md`, `model_selection.md`, `training_infrastructure.md`
 - **핵심 결정**: 파인튜닝·데이터·평가·생성 전 단계의 미결 사항을 명확히 하고, 에이전트 독단 결정 불가 항목에 `[User Review]` 플래그 추가 (Phase 0 결정 보류 원칙).
