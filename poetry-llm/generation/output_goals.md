@@ -1,5 +1,5 @@
 ---
-type: Goals
+type: Design
 title: 산출물 목표 및 Novelty 필터
 description: 프로젝트가 추구하는 최종 시의 기준 — novelty, 미학적 아이디어, 새로운 수사와 소재.
 tags: [generation, output, novelty, aesthetics]

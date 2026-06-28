@@ -19,18 +19,23 @@ timestamp: 2026-06-28T00:00:00Z
 
 ### `type` 값
 
-| type | 용도 |
-|------|------|
-| `Bundle Index` | 번들 루트 또는 섹션 index.md |
-| `Vision` | 프로젝트가 왜 존재하는가 |
-| `Goals` | 구체적 목표와 비목표 |
-| `Roadmap` | 단계별 진행 계획 |
-| `Design` | 설계 결정 문서 |
-| `Data Source` | 데이터 소스 기술 |
-| `Playbook` | 절차·실행 가이드 |
-| `Reference` | 관련 연구, 참고 자료 |
-| `Open Questions` | 미답 질문 목록 |
-| `Bundle Log` | 변경 이력 |
+| type | 용도 | 판단 기준 |
+|------|------|----------|
+| `Bundle Index` | 번들 루트 또는 섹션 index.md | 파일 목록 + 한 줄 설명만 있는 파일 |
+| `Vision` | 프로젝트가 왜 존재하는가 | 동기와 철학 |
+| `Goals` | 구체적 목표와 비목표 | "무엇을 할 것 / 하지 않을 것"만 담긴 파일 |
+| `Roadmap` | 단계별 진행 계획 | Phase별 타임라인 |
+| `Design` | 설계 결정 문서 | 아키텍처·알고리즘·수식·파라미터 스펙 포함 |
+| `Data Source` | 데이터 소스 목록·분량·라이선스 | 데이터 **어디서** 가져오는가 |
+| `Playbook` | 절차·실행 가이드 | 파이프라인 코드, 단계별 실행 절차 포함 |
+| `Reference` | 관련 연구, 참고 자료 | 논문·외부 자료 정리만 있는 파일 |
+| `Open Questions` | 미답 질문 목록 | Q-번호 체계로 관리되는 전역 질문 파일 |
+| `Bundle Log` | 변경 이력 | 세션 Handoff 로그 |
+
+**흔한 혼동:**
+- `Design` vs `Goals`: 파라미터, 수식, 구체적 설계 결정이 있으면 `Design`. "우리는 X를 할 것이다"만 있으면 `Goals`.
+- `Data Source` vs `Playbook`: 데이터 소스 목록·분량·라이선스 위주면 `Data Source`, 파이프라인 코드나 실행 절차가 주요 내용이면 `Playbook`.
+- `Reference` vs `Design`: 논문 정리만 있으면 `Reference`, 그 논문을 바탕으로 설계 결정이 내려졌으면 `Design`.
 
 ---
 
@@ -60,6 +65,14 @@ timestamp: 2026-06-28T00:00:00Z
 | `[User Review]`| **사용자 컨펌 필수.** 에이전트는 절대 스스로 해결하려 시도하지 않고 대기/질문 |
 | `[Ph1]` | Phase 1 이후 결정 |
 | `[Ph2]` | Phase 2 이후 결정 |
+
+**마커 사용 금지 패턴:**
+```
+❌ - [TODO] [User Review] 항목 내용   ← 중복 금지. [User Review]가 [TODO]를 대체한다.
+❌ - [TODO] 내용 [User Review] 내용   ← 인라인 삽입 금지. 항목 맨 앞에만 붙인다.
+✅ - [User Review] 항목 내용
+```
+`[User Review]`는 `[TODO]`의 상위 개념이다. 사용자 컨펌이 필요한 순간 `[TODO]`를 `[User Review]`로 **교체**한다.
 
 **미결 사항이 해결된 경우 (Decision Record)**:
 해결된 미결 사항은 단순히 삭제하지 않고 `## 결정 사항 (Decisions)` 섹션으로 이동시킨 뒤, 아래 형식으로 남겨 맥락(History)을 보존한다.

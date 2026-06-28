@@ -38,13 +38,32 @@ Survey every section and every file. Build a task list of exactly 15 valuable im
 - Assign each task to exactly one file (no two tasks touch the same file)
 - Spread tasks across sections: data/, preprocessing/, model/, generation/, evaluation/, research/
 
+**Task type quota — strictly enforced:**
+
+Each task must be labeled with one of these types. Enforce the minimum counts:
+
+| Task type | Min | Examples |
+|-----------|-----|---------|
+| A. 누락 파일 작성 | 3 | 참조만 되고 아직 없는 파일, 스텁 확장 |
+| B. 설계 결정 구체화 | 4 | 수치·근거 없는 섹션에 구체적 수식·기준·예시 추가 |
+| C. 오래된 정보 수정 | 2 | 이미 결정된 내용과 충돌하는 stale 내용 교정 |
+| D. 미결 사항 구조화 | 최대 3 | 기존 [TODO]에 서브 질문 추가 — **전체의 20% 이하** |
+| E. [User Review] 격상 | 나머지 | [TODO] 중 에이전트 독단 불가 항목을 [User Review]로 교체 |
+
+**D 타입(서브 질문 추가)이 15개 중 3개를 초과하면 계획을 다시 짜라.** 이것이 가장 쉬운 작업이지만 가장 낮은 가치를 생산한다.
+
 Write out the full 15-task plan before spawning any agents. Format:
 
 ```
-Task 01 | section | file.md | what to do
-Task 02 | section | file.md | what to do
+Task 01 | type:A | section | file.md | what to do (새 파일 작성 or 스텁 확장)
+Task 02 | type:B | section | file.md | what to do (설계 결정 구체화)
 ...
-Task 15 | section | file.md | what to do
+Task 15 | type:E | section | file.md | what to do ([User Review] 격상)
+```
+
+Task type 분포를 계획 상단에 요약:
+```
+Type A: X개, Type B: X개, Type C: X개, Type D: X개 (3 이하), Type E: X개
 ```
 
 ---
@@ -172,13 +191,13 @@ This wiki is in **Phase 0 — 기반 설계**. That means:
 
 ## What counts as valuable work
 
-**Good:**
-- Fixing wrong or outdated information
-- Writing a design doc that is referenced but not yet written
-- Adding pseudocode or examples that clarify a concept (not full implementations)
-- Filling in a `## 미결 사항` item with more context or sub-questions
-- Expanding a stub file into a full design doc
-- Moving resolved items to `## 결정 사항` with rationale
+**Good (우선순위 순):**
+1. 참조는 있으나 파일이 없는 문서 작성 (가장 가치 높음)
+2. 스텁 파일을 완전한 설계 문서로 확장
+3. 구체적 근거 없이 막연한 섹션에 수치·수식·예시 추가
+4. 이미 결정된 내용과 충돌하는 stale 정보 수정
+5. 해결된 미결 사항을 `## 결정 사항`으로 이동 (이유 포함)
+6. 기존 `[TODO]` 항목에 서브 질문 추가 **(15개 중 최대 3개만 허용, Type D)**
 
 **Bad (do not do):**
 - Adding full Python implementations or complete class definitions
@@ -188,6 +207,7 @@ This wiki is in **Phase 0 — 기반 설계**. That means:
 - Writing content that duplicates another file
 - Touching files outside your assigned task
 - Directly modifying confirmed (non-탐색중) sections
+- **서브 질문 추가(Type D)를 15개 중 4개 이상 배정하는 것** ← quota 위반, 계획 재작성 필요
 
 ---
 
