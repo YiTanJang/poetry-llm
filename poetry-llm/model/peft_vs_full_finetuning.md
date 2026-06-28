@@ -219,6 +219,7 @@ trainer = Trainer(
 
 ## 6. 미결 사항
 
+- [TODO] **파일 전체가 Qwen2.5-32B 특정 수치에 의존 중 — 모델 후보 변경됨:** 제목·파라미터 수(32.5B)·VRAM 계산(520GB+)·코드 예시 전체가 Qwen2.5-32B 기준. 현재 베이스 모델 후보는 Gemma 4 27B/31B로 변경됨(`model_selection.md` 참조). 분석 프레임워크는 재사용 가능하나 모델 이름·파라미터 수·VRAM 계산·코드 예시를 확정된 모델 기준으로 전면 재작성 필요. 모델 확정 전까지는 수치를 신뢰하지 말 것.
 1. [Ph1] Qwen2.5-32B의 Vocab Expansion 시, 새로운 문맥 특수 토큰(`<행갈이>`, `<연갈이>`)의 임베딩 학습 속도와 일반 파라미터 학습 속도의 불일치를 해결하기 위해 Embeddings layer와 LM Head에만 더 큰 Learning Rate를 적용하는 Grouped LR 전략이 Full FT 및 LoRA 환경에서 각각 학습 안정성에 어떤 영향을 미치는가?
 2. [Ph1] 풀 파인튜닝 시 한국어 일반 코퍼스(CPT 데이터 포함)와 현대 시 코퍼스의 적절한 혼합 비율(Mixing Ratio)은 Catastrophic Forgetting(시각적/문법적 붕괴)을 방지하면서 미학적 Novelty를 극대화하는 임계점이 어디인가?
 3. [Ph1] LoRA의 Rank ($r$)를 극단적으로 높이는 것(예: $r=256, \alpha=512$)이 Low-Rank 제약을 완화하여 Full Fine-Tuning의 미학적 성능에 근접할 수 있는지, 아니면 Full Fine-Tuning 고유의 파라미터 간 비선형 상호작용 및 표현 유연성을 대체하기 어려운지 실험적 검증 방법은 무엇인가?
