@@ -380,7 +380,7 @@ def preprocess_function(examples):
 
 ## 미결 사항
 
-- [TODO] Replay Buffer 후보 데이터셋(모두의말뭉치, CulturaX Korean, AI-Hub) 라이선스 확인 및 파이프라인 연동 우선순위 결정
+- [TODO] Replay Buffer 후보 데이터셋(모두의말뭉치, CulturaX Korean, AI-Hub) 라이선스 확인 및 파이프라인 연동 우선순위 결정 (명확한 상업적 이용 조항이 없는 데이터셋이나 엄격하게 CC BY-NC-SA가 적용된 데이터셋을 파이프라인에서 어떻게 처리/분리할 것인가?)
 - [Ph1] Replay Buffer 비율 5% vs 20% 비교 실험 — D-CPT Law에 따르면 도메인:일반 혼합 비율이 CPT 수렴의 핵심 변수. 현재 5% 설정을 20%로 늘렸을 때(총 데이터 ~375M 또는 1.5B 믹스 기준) catastrophic forgetting 방지 효과와 시 도메인 특화 성능 트레이드오프 측정 필요
 - [Ph1] Synthetic CPT 유효성 검증 — 프론티어 모델로 원본 코퍼스를 확장한 합성 데이터가 원본 시 코퍼스 단독 CPT 대비 손실 수렴과 이후 SFT 품질에 미치는 효과 측정. 합성 데이터 비율 상한(30%? 45%?) 결정 필요
 - [Ph1] Annealing 구간(마지막 10% 스텝) 도입 시 최종 체크포인트의 Perplexity와 시 생성 품질 변화
