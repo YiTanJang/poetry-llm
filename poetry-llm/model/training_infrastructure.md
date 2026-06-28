@@ -502,11 +502,28 @@ eval_loss가 N 평가 주기 연속 개선되지 않으면 중단:
   - grad_norm이 10 이상으로 지속 → LR 낮추고 재시작
 ```
 
+> 수정 제안:
+> ### 다중 노드 통신 효율 및 CPU Offload 병목 분석 (결정 사항)
+> 
+> **1. 다중 노드(2개 이상) 분산 학습 시 통신 병목 및 프레임워크 선택**
+> *   **대역폭 병목 이론치**: 단일 노드 내(NVLink) 통신은 600~900 GB/s에 달하나, 노드 간 통신(InfiniBand/RoCE)은 통상 100~400 Gbps (12.5~50 GB/s)로 약 10~50배 느리다.
+> *   **FSDP (`BACKWARD_PRE`)**: 레이어 단위 통신으로 노드 간 네트워크에 일시적인 트래픽 버스트(Micro-burst)를 유발하여 InfiniBand 혼잡(Congestion)이 발생할 수 있다. 통신-연산 중첩이 완벽하지 않을 경우 스텝 타임이 지연된다.
+> *   **DeepSpeed ZeRO-3**: `overlap_comm=true` 및 `stage3_prefetch_bucket_size` 조율을 통해 대역폭 사용을 평탄화(Communication Shaping)할 수 있어 다중 노드 환경에서 FSDP보다 통신 병목 완화에 유리하다.
+> *   **설계 결정**: 단일 노드(GPU 8장 이하)에서는 FSDP를 우선 적용하나, 2개 노드(GPU 16장) 이상으로 확장 시 DeepSpeed ZeRO-3로 마이그레이션하여 버킷 크기를 노드 간 대역폭에 맞춰 튜닝한다.
+>
+> **2. CPU Offload 및 PCIe Gen4 병목에 따른 MFU 예측치**
+> *   **이론적 한계**: PCIe Gen4 x16의 실효 대역폭은 약 26 GB/s(단방향)이다. Qwen2.5-32B의 옵티마이저 상태(195GB, 8-bit 기준)를 매 스텝마다 CPU와 GPU 간에 전송해야 하므로 통신 오버헤드가 극심하다.
+> *   **MFU 감소율 예측**: NVLink 기반 A100 환경의 기준 MFU(약 42%) 대비, PCIe 통신 병목으로 인해 MFU가 약 30% 수준으로 하락(절대치 12%p 감소, 상대비율 약 28.5% 저하)할 것으로 예측된다.
+> *   **오버헤드 완화 대책 (Gradient Accumulation Tuning)**:
+>     *   통신 횟수를 줄이기 위해 마이크로 배치 크기는 1로 유지하되, 그래디언트 누적 스텝(Gradient Accumulation Steps, $K$)을 4~8 이상으로 증가시킨다.
+>     *   **효과 모델링**: 오프로드 통신(가중치 갱신 및 옵티마이저 스텝)은 $K$ 스텝마다 1회만 발생한다. 따라서 $K$ 스텝 동안의 평균 스텝 시간 $T_{\text{total}} \approx K \times T_{\text{compute}} + T_{\text{offload}}$가 되어, $K$가 커질수록 통신 오버헤드 비율 $\frac{T_{\text{offload}}}{K \times T_{\text{compute}}}$가 반비례하여 감소한다.
+>     *   이 방식을 통해 MFU를 부분적으로 복구할 수 있으나, 글로벌 배치 크기 증가로 인해 수렴 에포크 수가 늘어날 수 있으므로 학습 곡선 모니터링이 필수적이다.
+
 ---
 
 ## 미결 사항
 
-- [TODO] **FSDP와 DeepSpeed ZeRO-3 간의 2개 노드 이상 분산 환경에서의 상호 대역폭 병목 및 통신 효율 측정**: 단일 노드(GPU 8장) 대비 다중 노드로 확장 시, FSDP의 `BACKWARD_PRE` 프리페치에 따른 노드 간 AllGather 통신 버스트와 DeepSpeed의 `overlap_comm` 및 `stage3_prefetch_bucket_size` 조율을 통한 통신 셰이핑(Communication Shaping)의 상호 대역폭 병목 및 VRAM 할당 변화 추이 검증 필요.
+- [User Review] **FSDP와 DeepSpeed ZeRO-3 간의 2개 노드 이상 분산 환경에서의 상호 대역폭 병목 및 통신 효율 측정**: 단일 노드(GPU 8장) 대비 다중 노드로 확장 시, FSDP의 `BACKWARD_PRE` 프리페치에 따른 노드 간 AllGather 통신 버스트와 DeepSpeed의 `overlap_comm` 및 `stage3_prefetch_bucket_size` 조율을 통한 통신 셰이핑(Communication Shaping)의 상호 대역폭 병목 및 VRAM 할당 변화 추이 검증 필요.
 - [Ph1] **8-bit AdamW 사용 시의 가중치 정밀도 저하가 시적 novelty 및 수사적 특이성 학습에 미치는 장기적 영향 검증**: 32B 모델의 풀 파인튜닝에서 8-bit optimizer가 fp32 master weights와 8-bit gradient를 조합할 때, 미세한 가중치 업데이트 손실이 한국어 고유의 미학적 시 작법 학습에 부정적 영향을 미치는지에 대한 실험적 평가 필요.
-- [TODO] **CPU Offload 활성화 시 PCIe Gen4 대역폭 병목으로 인한 MFU(Model FLOPs Utilization) 감소율 예측 및 A100 NVLink 미탑재 환경에서의 오버헤드 완화 대책**: 4x A100 PCIe 환경에서 optimizer offload 사용 시, NVLink SXM4 대비 PCIe Gen4 대역폭 한계로 인한 학습 속도 저하(MFU 30% 이하 예상)를 극복하기 위한 커스텀 gradient accumulation tuning의 타당성.
+- [User Review] **CPU Offload 활성화 시 PCIe Gen4 대역폭 병목으로 인한 MFU(Model FLOPs Utilization) 감소율 예측 및 A100 NVLink 미탑재 환경에서의 오버헤드 완화 대책**: 4x A100 PCIe 환경에서 optimizer offload 사용 시, NVLink SXM4 대비 PCIe Gen4 대역폭 한계로 인한 학습 속도 저하(MFU 30% 이하 예상)를 극복하기 위한 커스텀 gradient accumulation tuning의 타당성.
   - *Sub-question*: MFU 손실을 상쇄하기 위해 글로벌 배치 크기를 고정하고 그래디언트 누적(Gradient Accumulation) 단계를 늘릴 경우, 역전파 과정에서 통신 오버헤드를 얼마나 줄일 수 있으며 이에 따른 수렴 속도 지연은 수치적으로 어떻게 모델링할 수 있는가?
