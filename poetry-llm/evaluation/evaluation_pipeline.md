@@ -160,8 +160,8 @@ DPO(Direct Preference Optimization) 모델 학습 시 마진 $\delta = 0.15$를 
 
 | 마일스톤 | 시점 | 설명 |
 |----------|------|------|
-| M1 | 파일럿 LoRA 완료 | Qwen2.5-10.7B 검증. 리워드 모델 미구축 시 LLM 심사로 대체 |
-| M2 | 풀 파인튜닝 1차 완료 | Qwen2.5-32B 첫 버전 |
+| M1 | 파일럿 LoRA 완료 | Gemma 4 9B 검증. 리워드 모델 미구축 시 LLM 심사로 대체 |
+| M2 | 풀 파인튜닝 1차 완료 | Gemma 4 27B/31B 첫 버전 |
 | M3 | DPO 루프 포함 완료 | CPT → SFT → DPO 전체 파이프라인 |
 
 ### 외부 LLM 심사

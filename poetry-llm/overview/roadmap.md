@@ -43,7 +43,7 @@ timestamp: 2026-06-28T00:00:00Z
 **SFT (Supervised Fine-Tuning):**
 - [ ] Phase 1에서 생성한 (씨앗 → 스크래치패드 + 시) 데이터로 학습
 - [ ] 스크래치패드 + 시 전체 어시스턴트 토큰으로 학습
-- [ ] 파일럿: Qwen2.5-10.7B로 먼저 검증, 이후 32B
+- [ ] 파일럿: Gemma 4 9B로 먼저 검증, 이후 27B/31B
 
 **DPO (Direct Preference Optimization):**
 - [ ] SFT 모델로 3 페르소나 × 씨앗당 시 생성
@@ -74,7 +74,7 @@ timestamp: 2026-06-28T00:00:00Z
 - [ ] temperature × LoRA 조합 실험
 
 ## 미결 사항
-- [Ph1] 페르소나 수 최적화: 3개의 페르소나가 실제로 고유하고 다양한 출력 분포를 생성하는지 검증이 필요함. 이를 위해 Qwen2.5-10.7B 모델을 활용한 파일럿 SFT 생성 실험을 수행하고, 생성된 결과물 간의 어휘적 거리(예: self-BLEU) 및 의미적 거리(예: 한국어 특화 임베딩 모델을 통한 embedding similarity)를 정량적으로 측정하여 페르소나별 출력 분포의 독립성을 검증할 계획임. → [generation/multi_agent_council.md](../generation/multi_agent_council.md)
+- [Ph1] 페르소나 수 최적화: 3개의 페르소나가 실제로 고유하고 다양한 출력 분포를 생성하는지 검증이 필요함. 이를 위해 Gemma 4 9B 모델을 활용한 파일럿 SFT 생성 실험을 수행하고, 생성된 결과물 간의 어휘적 거리(예: self-BLEU) 및 의미적 거리(예: 한국어 특화 임베딩 모델을 통한 embedding similarity)를 정량적으로 측정하여 페르소나별 출력 분포의 독립성을 검증할 계획임. → [generation/multi_agent_council.md](../generation/multi_agent_council.md)
 - [Ph1] 보조 예술 데이터의 비율 및 혼합 방식
 - [TODO] 다국어 시를 한국어 시 학습에 어떻게 연결할 것인가: 한국어 시 생성 능력 향상을 위해 다국어 시 데이터를 활용하는 최적의 방안에 대한 고민. 주요 고려 옵션으로는 다국어 시와 한국어 시의 공동 지도 미세조정(joint SFT), 다국어 시 번역 정렬 데이터(translated alignments) 활용, 혹은 다국어 코퍼스를 포함한 다중 작업 교차 언어 사전 학습(multi-task cross-lingual pre-training) 등이 있음.
 - [TODO] 평가자 구성 (문학 전문가 vs 일반 독자)

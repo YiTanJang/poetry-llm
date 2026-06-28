@@ -58,7 +58,7 @@ SFT (Supervised Fine-Tuning)
 
 ### 목적
 
-베이스 모델(Qwen2.5-32B)이 한국 현대시 언어에 적응하도록 도메인 특화 사전학습을 진행한다.
+베이스 모델(Gemma 4 27B/31B)이 한국 현대시 언어에 적응하도록 도메인 특화 사전학습을 진행한다.
 CPT는 SFT의 선행 조건이다. 도메인 언어 없이 포맷을 학습하면 생성물의 어휘·리듬이 일반 언어 모델 수준에 머문다.
 
 ### CPT 커리큘럼 및 토큰 버젯 (총 120M 토큰)
@@ -93,7 +93,7 @@ Stage 5 — 수정/반복 (수정 과정 데이터): 10M tokens
 
 창작 노트(CoT) → 시 초안 → 반복 수정 포맷을 학습한다. 특수 토큰이 완전히 통합되어야 한다. CPT 단계에서 확보한 한국 현대시의 언어 감각을 바탕으로, 구조화된 창작 지시와 미학적 피드백을 수용하는 정교한 생성 능력을 배양한다.
 
-### 핵심 하이퍼파라미터 (Qwen2.5-32B 풀 파인튜닝, A100 80GB × 2장 기준)
+### 핵심 하이퍼파라미터 (Gemma 4 27B/31B 풀 파인튜닝, A100 80GB × 2장 기준)
 
 > 탐색중 — 각 파라미터 범위는 파일럿 실험 후 좁혀질 수 있음
 
@@ -358,7 +358,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 def initialize_special_token_embeddings():
-    model_id = "Qwen/Qwen2.5-32B"
+    model_id = "google/gemma-4-27b"
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     model = AutoModelForCausalLM.from_pretrained(
         model_id,

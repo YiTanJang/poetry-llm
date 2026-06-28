@@ -6,6 +6,29 @@ timestamp: 2026-06-26T00:00:00Z
 
 # 변경 이력
 
+## 2026-06-28 (Antigravity — Qwen2.5에서 Gemma 4로 모델 전환)
+- **[2026-06-28] 작업 요약**: 베이스 모델을 Qwen2.5에서 Gemma 4로 교체하는 일괄 업데이트 및 '수정 제안' 블록 병합 반영.
+  - **수정 파일**:
+    - `poetry-llm/data/token_budget.md`
+    - `poetry-llm/evaluation/llm_as_judge.md`
+    - `poetry-llm/evaluation/evaluation_pipeline.md`
+    - `poetry-llm/data/augmentation.md`
+    - `poetry-llm/data/quality_and_cleaning.md`
+    - `poetry-llm/data/other_arts.md`
+    - `poetry-llm/model/peft_vs_full_finetuning.md`
+    - `poetry-llm/model/model_selection.md`
+    - `poetry-llm/model/continual_pretraining.md`
+    - `poetry-llm/model/finetuning_strategy.md`
+    - `poetry-llm/model/training_infrastructure.md`
+    - `poetry-llm/model/special_tokens.md`
+    - `poetry-llm/model/index.md`
+    - `poetry-llm/generation/multi_agent_council.md`
+    - `poetry-llm/overview/roadmap.md`
+    - `poetry-llm/preprocessing/korean_g2p_alignment.md`
+    - `poetry-llm/preprocessing/line_break_tokens.md`
+    - `poetry-llm/preprocessing/pronunciation.md`
+  - **다음 단계 (Next Steps)**: Gemma 4 토크나이저 압축 효율성 및 특수 토큰 병합 실제 검증 진행.
+
 ## 2026-06-28 (Antigravity — 15개 파일 최종 마스터 병합)
 - **[2026-06-28] 작업 요약**: 위키 구조 개선 및 미결 사항 구체화 (총 15개 작업)
   - **수정 파일**:
