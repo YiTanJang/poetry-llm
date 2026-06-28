@@ -6,6 +6,15 @@ timestamp: 2026-06-26T00:00:00Z
 
 # 변경 이력
 
+## 2026-06-28 (CPT 스케일링 법칙 업데이트 — PTPP 반박, D-CPT Law 인용, Synthetic CPT, Replay Buffer 실험)
+- `poetry-llm/model/continual_pretraining.md`:
+  - **PTPP 오용 주의 섹션 신설**: PTPP(Tokens-Per-Parameter)가 스크래치 프리트레이닝 지표이며 CPT에 부적합함을 명시. 외부 리뷰어의 "300M 토큰 부족" 주장에 대한 위키 내 반박 근거 확립.
+  - **실증적 근거 섹션 확장**: D-CPT Law (Que et al. 2024), Learning Dynamics in Continual Pre-Training (2024), PTPP-Aware Adaptation Scaling Laws (2024) 3편 인용 추가. CPT 수렴 핵심 변수(혼합 비율, LR 스케줄)를 스케일링 법칙으로 뒷받침.
+  - **Synthetic CPT 전략 명시**: 데이터 부족 대응으로 프론티어 모델 기반 합성 데이터 확장(요약·해석·비평·패러프레이즈) 방법을 CPT 건너뛰기 옵션 항목에 추가.
+  - **미결 사항 갱신**: [Ph1] Replay Buffer 5% vs 20% 비교 파일럿, [Ph1] Synthetic CPT 유효성 검증 추가.
+- `poetry-llm/data/token_budget.md`:
+  - **미결 사항 갱신**: [Ph1] Replay Buffer 비율 5% vs 20% 비교 파일럿 추가 (D-CPT Law 혼합 비율 권장과 현재 설계 트레이드오프 명시).
+
 ## 2026-06-28 (파이프라인 블로커 17-point 분석 — open_questions 및 미결 사항 추가)
 - `poetry-llm/research/open_questions.md`: Q29~Q35 신규 추가. 상태 요약 미답 20 → 27. Phase 0/1/2/3 단계 매핑 테이블 갱신.
   - Q29 (CoT 포맷 통일 Showstopper), Q30 (리워드 모델 콜드스타트 역설), Q31 (GRPO 파이프라인 미구축 Showstopper)
